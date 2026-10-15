@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AddRounded from '@mui/icons-material/AddRounded'
-import DataObjectRounded from '@mui/icons-material/DataObjectRounded'
 import HubRounded from '@mui/icons-material/HubRounded'
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
@@ -173,10 +172,8 @@ function App({ settings, onSettingsChange }: AppProps) {
 
       <Stack component="nav" sx={{ gridColumn: 1, gridRow: 2, alignItems: 'center', py: 1, borderRight: '1px solid', borderColor: 'divider', bgcolor: 'var(--latch-shell)' }}>
         <Tooltip title="Data sources" placement="right"><IconButton color="primary" sx={{ bgcolor: 'rgba(201,245,95,.08)' }}><StorageRounded fontSize="small" /></IconButton></Tooltip>
-        <Tooltip title="New query" placement="right"><IconButton sx={{ mt: 0.5 }} onClick={addQueryFromExplorer}><DataObjectRounded fontSize="small" /></IconButton></Tooltip>
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Settings" placement="right"><IconButton aria-label="Open settings" onClick={() => setSettingsDialogOpen(true)}><SettingsRounded fontSize="small" /></IconButton></Tooltip>
-        <Typography variant="caption" color="text.disabled" sx={{ mt: 1, fontSize: 8, writingMode: 'vertical-rl', letterSpacing: '.1em' }}>v0.1</Typography>
       </Stack>
 
       <Box sx={{ gridColumn: 2, gridRow: 2, minWidth: 0, minHeight: 0 }}>
