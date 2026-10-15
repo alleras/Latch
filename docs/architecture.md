@@ -5,7 +5,8 @@ Latch separates application composition, feature controllers, UI, and Electron i
 ## Renderer
 
 - `App.tsx` composes the shell, dialogs, sidebar, and query workspace. It coordinates only workflows that cross feature boundaries.
-- `features/database-catalog` owns connections, database/schema metadata, request deduplication, and caches.
+- `features/connections` owns provider discovery and saved connection CRUD.
+- `features/database-catalog` owns database/schema metadata, request deduplication, and caches.
 - `features/database-explorer` owns the selected explorer context and its persistence.
 - `features/query-workspace` owns tabs, query drafts, execution state, results, and workspace persistence.
 - `features/query-workspace/editor` adapts Monaco. One editor instance is retained while each open query tab receives its own model and saved view state.

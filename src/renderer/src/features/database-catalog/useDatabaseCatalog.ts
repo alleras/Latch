@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Connection, DatabaseObject, ProviderDefinition } from '../../../../shared/types'
+import { useCallback, useRef, useState } from 'react'
+import type { Connection, DatabaseObject } from '../../../../shared/types'
 import { connectionDatabaseKey } from '../../query-tabs'
 
 interface DatabaseCatalogState {
-  providers: ProviderDefinition[]
-  connections: Connection[]
   databasesByConnection: Record<string, string[]>
   schemasByContext: Record<string, DatabaseObject[]>
   loadingDatabaseIds: Set<string>
   loadingSchemaKeys: Set<string>
-  ready: boolean
 }
 
 export function preferredDatabase(connection: Connection, databases: string[]): string | undefined {
@@ -20,33 +17,15 @@ export function preferredDatabase(connection: Connection, databases: string[]): 
 
 export function useDatabaseCatalog() {
   const [state, setState] = useState<DatabaseCatalogState>({
-    providers: [],
-    connections: [],
     databasesByConnection: {},
     schemasByContext: {},
     loadingDatabaseIds: new Set(),
-    loadingSchemaKeys: new Set(),
-    ready: false
+    loadingSchemaKeys: new Set()
   })
   const databaseCacheRef = useRef(new Map<string, string[]>())
   const databaseRequestsRef = useRef(new Map<string, Promise<string[]>>())
   const schemaCacheRef = useRef(new Map<string, DatabaseObject[]>())
   const schemaRequestsRef = useRef(new Map<string, Promise<DatabaseObject[]>>())
-
-  useEffect(() => {
-    let cancelled = false
-    void Promise.all([window.latch.listProviders(), window.latch.listConnections()]).then(([providers, connections]) => {
-      if (cancelled) return
-      setState((current) => ({ ...current, providers, connections, ready: true }))
-    })
-    return () => { cancelled = true }
-  }, [])
-
-  const refreshConnections = useCallback(async (): Promise<Connection[]> => {
-    const connections = await window.latch.listConnections()
-    setState((current) => ({ ...current, connections }))
-    return connections
-  }, [])
 
   const loadDatabases = useCallback(async (
     connection: Exclude<Connection, { provider: 'sqlite' }>,
@@ -150,19 +129,10 @@ export function useDatabaseCatalog() {
     })
   }, [])
 
-  const removeConnection = useCallback(async (connectionId: string): Promise<Connection[]> => {
-    const connections = await window.latch.removeConnection(connectionId)
-    evictConnection(connectionId)
-    setState((current) => ({ ...current, connections }))
-    return connections
-  }, [evictConnection])
-
   return {
     ...state,
-    refreshConnections,
     loadDatabases,
     loadSchema,
-    evictConnection,
-    removeConnection
+    evictConnection
   }
 }

@@ -83,7 +83,7 @@ The renderer has no direct Node.js access. Database and filesystem operations li
 - `src/main/connections.ts` owns persisted definitions and encrypted credentials.
 - `src/main/ipc.ts` exposes the provider-neutral application API.
 - `src/shared/` contains contracts shared across Electron processes.
-- `src/renderer/src/features/` contains feature-owned state, effects, persistence, and views.
+- `src/renderer/src/features/` contains feature-owned state, effects, persistence, and views, including separate connection, metadata, explorer, and query-workspace controllers.
 - `src/renderer/src/App.tsx` is the composition shell for those features.
 - `src/renderer/src/components/DatabaseExplorer.tsx` owns the database object tree.
 - `src/renderer/src/results/` contains result virtualization, selection, and copying logic.

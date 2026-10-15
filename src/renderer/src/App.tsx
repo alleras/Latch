@@ -13,6 +13,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
 import { readableErrorMessage } from './errors'
 import { preferredDatabase, useDatabaseCatalog } from './features/database-catalog/useDatabaseCatalog'
+import { useConnectionManager } from './features/connections/useConnectionManager'
 import { useDatabaseExplorer } from './features/database-explorer/useDatabaseExplorer'
 import { QueryWorkspace } from './features/query-workspace/QueryWorkspace'
 import { useQueryWorkspace } from './features/query-workspace/useQueryWorkspace'
@@ -28,15 +29,19 @@ function App({ settings, onSettingsChange }: AppProps) {
   const {
     providers,
     connections,
+    ready: connectionsReady,
+    openSqlite,
+    addServer,
+    remove: removeManagedConnection
+  } = useConnectionManager()
+  const {
     databasesByConnection,
     schemasByContext,
     loadingDatabaseIds,
     loadingSchemaKeys,
-    ready: catalogReady,
-    refreshConnections,
     loadDatabases,
     loadSchema,
-    removeConnection: removeCatalogConnection
+    evictConnection
   } = useDatabaseCatalog()
   const handleSchemaChanged = useCallback((connectionId: string, database?: string): void => {
     void loadSchema(connectionId, database, true).catch(console.error)
@@ -86,11 +91,11 @@ function App({ settings, onSettingsChange }: AppProps) {
   const tabConnection = connections.find((connection) => connection.id === activeTab?.connectionId) ?? null
 
   useEffect(() => {
-    if (!catalogReady || initializedRef.current) return
+    if (!connectionsReady || initializedRef.current) return
     initializedRef.current = true
     const restoredWorkspaceContext = initializeWorkspace(connections)
     initializeExplorer(connections, restoredWorkspaceContext)
-  }, [catalogReady, connections, initializeExplorer, initializeWorkspace])
+  }, [connections, connectionsReady, initializeExplorer, initializeWorkspace])
 
   useEffect(() => {
     if (!activeTab || !tabConnection) return
@@ -123,20 +128,18 @@ function App({ settings, onSettingsChange }: AppProps) {
   }, [explorerConnection, explorerDatabase, openConnectionDialog, openQuery])
 
   const addSqlite = useCallback(async (mode: 'open' | 'create'): Promise<void> => {
-    const connection = mode === 'open' ? await window.latch.openDatabase() : await window.latch.createDatabase()
+    const connection = await openSqlite(mode)
     if (!connection) return
-    await refreshConnections()
     selectAddedConnection(connection.id)
     openQuery(connection.id)
     setConnectionDialogOpen(false)
-  }, [openQuery, refreshConnections, selectAddedConnection])
+  }, [openQuery, openSqlite, selectAddedConnection])
 
   const addServerConnection = useCallback(async (input: ServerConnectionInput): Promise<void> => {
     setIsConnecting(true)
     setConnectionError(null)
     try {
-      const connection = await window.latch.addServerConnection(input)
-      await refreshConnections()
+      const connection = await addServer(input)
       selectAddedConnection(connection.id)
       setConnectionDialogOpen(false)
     } catch (error) {
@@ -144,13 +147,14 @@ function App({ settings, onSettingsChange }: AppProps) {
     } finally {
       setIsConnecting(false)
     }
-  }, [refreshConnections, selectAddedConnection])
+  }, [addServer, selectAddedConnection])
 
   const removeConnection = useCallback(async (connectionId: string): Promise<void> => {
-    const remaining = await removeCatalogConnection(connectionId)
+    const remaining = await removeManagedConnection(connectionId)
+    evictConnection(connectionId)
     closeTabsForConnection(connectionId)
     handleConnectionRemoved(connectionId, remaining)
-  }, [closeTabsForConnection, handleConnectionRemoved, removeCatalogConnection])
+  }, [closeTabsForConnection, evictConnection, handleConnectionRemoved, removeManagedConnection])
 
   const displayConnection = tabConnection ?? explorerConnection
 
