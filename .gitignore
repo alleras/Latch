@@ -1,0 +1,21 @@
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+
+# Local databases can contain sensitive or large data.
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+

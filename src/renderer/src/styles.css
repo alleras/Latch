@@ -1,0 +1,218 @@
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/dm-sans/600.css';
+@import '@fontsource/dm-mono/400.css';
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.resize-handle {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 5px;
+  background: transparent;
+  outline: none;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  background: var(--mui-palette-divider);
+  transition: background-color 120ms ease;
+}
+
+.resize-handle[aria-orientation='vertical'] {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.resize-handle[aria-orientation='vertical']::after {
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+}
+
+.resize-handle[aria-orientation='horizontal'] {
+  height: 5px;
+  cursor: row-resize;
+}
+
+.resize-handle[aria-orientation='horizontal']::after {
+  top: 2px;
+  right: 0;
+  left: 0;
+  height: 1px;
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.resize-handle[data-resize-handle-active]::after {
+  background: var(--latch-accent);
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--latch-scrollbar);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.result-grid-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--latch-shell);
+  color: var(--latch-grid-text);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+
+.result-grid-content {
+  min-width: 100%;
+}
+
+.result-grid-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  height: 34px;
+  min-width: 100%;
+  background: var(--latch-grid-header);
+  color: var(--mui-palette-text-secondary);
+}
+
+.result-grid-header,
+.result-grid-row {
+  grid-template-columns: var(--result-grid-columns);
+}
+
+.result-grid-header-cell,
+.result-grid-cell {
+  min-width: 0;
+  border-right: 1px solid var(--latch-grid-border);
+  border-bottom: 1px solid var(--latch-grid-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-grid-header-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 500;
+}
+
+.result-grid-header-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-grid-column-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  outline: 0;
+}
+
+.result-grid-column-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--latch-grid-border);
+  transition: background-color 100ms ease, width 100ms ease;
+}
+
+.result-grid-column-resizer:hover::after,
+.result-grid-column-resizer:focus-visible::after,
+.result-grid-column-resizer[data-resize-active='true']::after {
+  width: 2px;
+  background: var(--latch-accent);
+}
+
+.result-grid-header-select {
+  padding: 0 12px;
+  background: var(--latch-grid-gutter);
+}
+
+.result-grid-body {
+  position: relative;
+  min-width: 100%;
+  contain: strict;
+}
+
+.result-grid-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 100%;
+  height: 30px;
+}
+
+.result-grid-row:hover {
+  background: var(--latch-grid-hover);
+}
+
+.result-grid-row-selected,
+.result-grid-row-selected:hover {
+  background: var(--latch-grid-selected);
+}
+
+.result-grid-cell {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 16px;
+  user-select: none;
+  outline: 0;
+}
+
+.result-grid-row-number {
+  gap: 2px;
+  padding: 0 7px;
+  background: var(--latch-grid-gutter);
+  color: var(--latch-grid-muted);
+}
+
+.result-grid-data-cell:focus-visible,
+.result-grid-cell-selected {
+  background: var(--latch-grid-selected);
+  box-shadow: inset 0 0 0 1px var(--latch-accent);
+}
+
+.result-grid-null-cell {
+  color: var(--latch-grid-muted);
+  font-style: italic;
+}
