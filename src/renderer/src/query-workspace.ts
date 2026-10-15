@@ -14,7 +14,8 @@ interface PersistedQueryTab {
 export interface QueryWorkspaceSnapshot {
   version: 1
   activeTabId: string | null
-  explorerConnectionId: string | null
+  /** Legacy v1 fields, read only while migrating explorer state to its own owner. */
+  explorerConnectionId?: string | null
   explorerDatabase?: string
   tabs: PersistedQueryTab[]
 }
@@ -115,15 +116,11 @@ export function restoreQueryWorkspace(
 export function createQueryWorkspaceSnapshot(
   tabs: QueryTabState[],
   drafts: Map<string, string>,
-  activeTabId: string | null,
-  explorerConnectionId: string | null,
-  explorerDatabase?: string
+  activeTabId: string | null
 ): QueryWorkspaceSnapshot {
   return {
     version: 1,
     activeTabId,
-    explorerConnectionId,
-    explorerDatabase,
     tabs: tabs.map((tab) => ({
       id: tab.id,
       title: tab.title,

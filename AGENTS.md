@@ -9,3 +9,11 @@
 - Virtualize large visible collections. For hierarchical data, use isolated memoized subtrees at minimum and flatten plus virtualize when visible node counts can grow substantially.
 - Preserve expensive mounted views across navigation when their state is expected to survive, particularly editors and result grids. Hide or suspend them instead of remounting them on every tab switch.
 - Before considering collection-heavy UI complete, verify it against a large synthetic fixture representative of real databases, including thousands of objects or rows and wide records.
+
+## Architecture rules
+
+- Keep `App` as a composition shell. Feature state, effects, persistence, and async workflows belong to a feature controller or service with one clear owner.
+- Keep related state together. Do not split one domain entity across component state, unrelated refs, and storage callbacks owned by different components.
+- Wrap stateful third-party systems such as Monaco in a dedicated adapter hook. Preserve their long-lived instances and expose a small application-facing interface.
+- Keep persistence behind the feature that owns the persisted data. Cross-feature migration code may read legacy fields, but new writes must not recreate the coupling.
+- Prefer pure domain helpers plus thin UI components. Components may own local interaction state, but not unrelated application workflows.
