@@ -53,9 +53,26 @@ Useful commands:
 | `npm run dev` | Start Electron with the development server |
 | `npm run typecheck` | Type-check the main, preload, shared, and renderer code |
 | `npm run build` | Type-check and create production bundles in `out/` |
+| `npm run package` | Build unpacked bundles and installers for the current platform |
+| `npm run package:mac` | Build macOS DMG and ZIP artifacts |
+| `npm run package:win` | Build Windows NSIS and ZIP artifacts |
+| `npm run package:linux` | Build Linux AppImage and tarball artifacts |
 | `npm run preview` | Preview the production Electron bundles |
 
-The project does not yet create signed or distributable installers.
+Installer output is written to `release/`.
+
+## Desktop builds
+
+The `Desktop builds` GitHub Actions workflow can be started manually from the Actions tab. It packages macOS, Windows, and Linux builds and retains them as workflow artifacts for 14 days.
+
+Pushing a version tag also creates a GitHub release and attaches all installers:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The current artifacts are unsigned. macOS and Windows may warn when opening them until code-signing and macOS notarization credentials are configured.
 
 ## Architecture
 
