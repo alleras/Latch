@@ -8,6 +8,7 @@
 - Isolate urgent input updates from expensive derived views. Defer filtering work and render only the descendants needed to show a match.
 - Virtualize large visible collections. For hierarchical data, use isolated memoized subtrees at minimum and flatten plus virtualize when visible node counts can grow substantially.
 - Preserve expensive mounted views across navigation when their state is expected to survive, particularly editors and result grids. Hide or suspend them instead of remounting them on every tab switch.
+- For live resizing and other high-frequency interactions, use one shared layout owner or an established virtualized component; do not repeat the same layout calculation across every visible item. Coalesce writes to animation frames only after the layout scope is correct.
 - Before considering collection-heavy UI complete, verify it against a large synthetic fixture representative of real databases, including thousands of objects or rows and wide records.
 
 ## Architecture rules

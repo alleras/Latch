@@ -29,7 +29,7 @@ import {
   type CellPosition,
   type SelectionModifiers
 } from '../results/result-selection'
-import { VirtualizedResultTable } from '../results/VirtualizedResultTable'
+import { ResultDataGrid } from '../results/ResultDataGrid'
 
 interface ResultsPanelProps {
   result: QueryResult | null
@@ -62,8 +62,6 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
     () => [...selectedRows].filter((index) => index < (result?.rows.length ?? 0)).sort((left, right) => left - right),
     [result, selectedRows]
   )
-  const allRowsSelected = Boolean(result?.rows.length) && selectedRows.size === result?.rows.length
-  const someRowsSelected = selectedRows.size > 0 && !allRowsSelected
   const canCopyResults = Boolean(result?.columns.length)
 
   useEffect(() => {
@@ -139,41 +137,28 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
     void writeClipboard(messageSummary.copyText, 'Messages copied')
   }
 
-  const toggleAllRows = (): void => {
-    setSelectedCells(new Set())
-    setSelectedRows(allRowsSelected || !result ? new Set() : new Set(result.rows.map((_, index) => index)))
-    cellAnchorRef.current = null
-    rowAnchorRef.current = null
-  }
-
   const handleRowSelection = useCallback((rowIndex: number, event: MouseEvent<HTMLElement>): void => {
     event.stopPropagation()
     const modifiers = selectionModifiers(event)
+    const anchor = rowAnchorRef.current
     setSelectedCells(new Set())
-    setSelectedRows((current) => selectRows(current, rowAnchorRef.current, rowIndex, modifiers))
+    setSelectedRows((current) => selectRows(current, anchor, rowIndex, modifiers))
     cellAnchorRef.current = null
     if (!modifiers.extend || rowAnchorRef.current === null) rowAnchorRef.current = rowIndex
   }, [])
 
-  const handleRowCheckboxSelection = useCallback((rowIndex: number, event: MouseEvent<HTMLElement>): void => {
-    event.stopPropagation()
-    const modifiers = selectionModifiers(event)
-    const checkboxModifiers = {
-      extend: modifiers.extend,
-      additive: modifiers.extend ? modifiers.additive : true
-    }
+  const handleSelectedRowsChange = useCallback((nextSelectedRows: Set<number>): void => {
     setSelectedCells(new Set())
-    setSelectedRows((current) => selectRows(current, rowAnchorRef.current, rowIndex, checkboxModifiers))
+    setSelectedRows(nextSelectedRows)
     cellAnchorRef.current = null
-    if (!modifiers.extend || rowAnchorRef.current === null) rowAnchorRef.current = rowIndex
+    rowAnchorRef.current = null
   }, [])
 
-  const handleCellSelection = useCallback((rowIndex: number, columnIndex: number, event: MouseEvent<HTMLElement>): void => {
-    event.stopPropagation()
+  const handleCellSelection = useCallback((rowIndex: number, columnIndex: number, modifiers: SelectionModifiers): void => {
     const target = { rowIndex, columnIndex }
-    const modifiers = selectionModifiers(event)
+    const anchor = cellAnchorRef.current
     setSelectedRows(new Set())
-    setSelectedCells((current) => selectCells(current, cellAnchorRef.current, target, modifiers))
+    setSelectedCells((current) => selectCells(current, anchor, target, modifiers))
     rowAnchorRef.current = null
     if (!modifiers.extend || cellAnchorRef.current === null) cellAnchorRef.current = target
   }, [])
@@ -289,15 +274,12 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
           </Stack>
         )}
         {result && result.columns.length > 0 && (
-          <VirtualizedResultTable
+          <ResultDataGrid
             result={result}
             selectedCells={selectedCells}
             selectedRows={selectedRows}
-            allRowsSelected={allRowsSelected}
-            someRowsSelected={someRowsSelected}
-            onToggleAllRows={toggleAllRows}
+            onSelectedRowsChange={handleSelectedRowsChange}
             onRowSelection={handleRowSelection}
-            onRowCheckboxSelection={handleRowCheckboxSelection}
             onCellSelection={handleCellSelection}
             onOpenRowMenu={openRowMenu}
             onOpenCellMenu={openCellMenu}

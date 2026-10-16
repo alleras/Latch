@@ -77,142 +77,68 @@ body,
   background: transparent;
 }
 
-.result-grid-scroll {
+.latch-result-grid-host {
   width: 100%;
   height: 100%;
-  overflow: auto;
-  background: var(--latch-shell);
-  color: var(--latch-grid-text);
+  min-width: 0;
+  min-height: 0;
+}
+
+.latch-result-grid.rdg {
+  --rdg-selection-width: 1px;
+  --rdg-selection-color: var(--latch-accent);
+  --rdg-color: var(--latch-grid-text);
+  --rdg-border-color: var(--latch-grid-border);
+  --rdg-background-color: var(--latch-shell);
+  --rdg-header-background-color: var(--latch-grid-header);
+  --rdg-header-draggable-background-color: var(--latch-grid-header);
+  --rdg-row-hover-background-color: var(--latch-grid-hover);
+  --rdg-row-selected-background-color: var(--latch-grid-selected);
+  --rdg-row-selected-hover-background-color: var(--latch-grid-selected);
+  --rdg-checkbox-focus-color: var(--latch-accent);
+  border: 0;
   font-family: 'DM Mono', monospace;
   font-size: 11px;
-}
-
-.result-grid-content {
-  min-width: 100%;
-}
-
-.result-grid-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: grid;
-  height: 34px;
-  min-width: 100%;
-  background: var(--latch-grid-header);
-  color: var(--mui-palette-text-secondary);
-}
-
-.result-grid-header,
-.result-grid-row {
-  grid-template-columns: var(--result-grid-columns);
-}
-
-.result-grid-header-cell,
-.result-grid-cell {
-  min-width: 0;
-  border-right: 1px solid var(--latch-grid-border);
-  border-bottom: 1px solid var(--latch-grid-border);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.result-grid-header-cell {
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  font-weight: 500;
-}
-
-.result-grid-header-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.result-grid-column-resizer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 3;
-  width: 9px;
-  height: 100%;
-  cursor: col-resize;
-  touch-action: none;
-  outline: 0;
-}
-
-.result-grid-column-resizer::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 1px;
-  height: 100%;
-  background: var(--latch-grid-border);
-  transition: background-color 100ms ease, width 100ms ease;
-}
-
-.result-grid-column-resizer:hover::after,
-.result-grid-column-resizer:focus-visible::after,
-.result-grid-column-resizer[data-resize-active='true']::after {
-  width: 2px;
-  background: var(--latch-accent);
-}
-
-.result-grid-header-select {
-  padding: 0 12px;
-  background: var(--latch-grid-gutter);
-}
-
-.result-grid-body {
-  position: relative;
-  min-width: 100%;
-  contain: strict;
-}
-
-.result-grid-row {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: grid;
-  width: 100%;
-  height: 30px;
-}
-
-.result-grid-row:hover {
-  background: var(--latch-grid-hover);
-}
-
-.result-grid-row-selected,
-.result-grid-row-selected:hover {
-  background: var(--latch-grid-selected);
-}
-
-.result-grid-cell {
-  display: flex;
-  align-items: center;
-  height: 30px;
-  padding: 0 16px;
   user-select: none;
-  outline: 0;
+  -webkit-user-select: none;
 }
 
-.result-grid-row-number {
+.latch-result-grid .rdg-header-row {
+  color: var(--mui-palette-text-secondary);
+  font-weight: 500;
+  user-select: none;
+}
+
+.latch-result-grid .rdg-header-row .rdg-cell[aria-selected='true'] {
+  outline: none;
+}
+
+.latch-result-row-number-cell {
+  padding-inline: 7px !important;
+  background: var(--latch-grid-gutter) !important;
+}
+
+.latch-result-row-number {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
   gap: 2px;
-  padding: 0 7px;
-  background: var(--latch-grid-gutter);
   color: var(--latch-grid-muted);
 }
 
-.result-grid-data-cell:focus-visible,
-.result-grid-cell-selected {
-  background: var(--latch-grid-selected);
+.latch-result-cell-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.latch-result-cell-selected {
+  background: var(--latch-grid-selected) !important;
   box-shadow: inset 0 0 0 1px var(--latch-accent);
 }
 
-.result-grid-null-cell {
+.latch-result-null-cell {
   color: var(--latch-grid-muted);
   font-style: italic;
 }
