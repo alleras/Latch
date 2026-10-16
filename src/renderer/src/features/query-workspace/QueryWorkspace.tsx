@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from 'react'
+import { memo, useCallback, useDeferredValue, useMemo, useRef } from 'react'
 import DataObjectRounded from '@mui/icons-material/DataObjectRounded'
 import { Box, Button, Stack, Typography } from '@mui/material'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
@@ -65,9 +65,10 @@ export const QueryWorkspace = memo(function QueryWorkspace({
   const connection = connections.find((item) => item.id === activeTab?.connectionId) ?? null
   const provider = providers.find((item) => item.id === connection?.provider)
   const openTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
+  const displayedResultsTabId = useDeferredValue(activeTabId)
   const retainedResultTabs = useMemo(
-    () => tabs.filter((tab) => tab.id === activeTabId || tab.result !== null || tab.error !== null),
-    [activeTabId, tabs]
+    () => tabs.filter((tab) => tab.id === displayedResultsTabId || tab.result !== null || tab.error !== null),
+    [displayedResultsTabId, tabs]
   )
 
   const runActiveQuery = useCallback((): void => {
@@ -131,7 +132,7 @@ export const QueryWorkspace = memo(function QueryWorkspace({
                   <TabResultsPanel
                     key={tab.id}
                     tab={tab}
-                    active={tab.id === activeTab.id}
+                    active={tab.id === displayedResultsTabId}
                     onClearResults={onClearResults}
                   />
                 ))}
