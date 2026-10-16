@@ -11,6 +11,7 @@ files:
   - package.json
 
 mac:
+  icon: build/icon.png
   category: public.app-category.developer-tools
   artifactName: ${productName}-${version}-mac-${arch}.${ext}
   target:
@@ -24,6 +25,7 @@ mac:
         - arm64
 
 win:
+  icon: build/icon.png
   artifactName: ${productName}-${version}-windows-${arch}.${ext}
   target:
     - target: nsis
@@ -38,6 +40,7 @@ nsis:
   allowToChangeInstallationDirectory: true
 
 linux:
+  icon: build/icon.png
   category: Development
   artifactName: ${productName}-${version}-linux-${arch}.${ext}
   target:

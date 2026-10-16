@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AddRounded from '@mui/icons-material/AddRounded'
-import HubRounded from '@mui/icons-material/HubRounded'
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
 import StorageRounded from '@mui/icons-material/StorageRounded'
@@ -8,6 +7,7 @@ import { Box, Button, IconButton, Stack, Tooltip, Typography } from '@mui/materi
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import type { ServerConnectionInput } from '../../shared/types'
 import { ConnectionDialog } from './components/ConnectionDialog'
+import { LatchMark } from './components/LatchMark'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
 import { readableErrorMessage } from './errors'
@@ -160,9 +160,7 @@ function App({ settings, onSettingsChange }: AppProps) {
   return (
     <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', gridTemplateRows: '46px minmax(0, 1fr)', bgcolor: 'background.default' }}>
       <Stack component="header" direction="row" sx={{ gridColumn: '1 / -1', alignItems: 'center', px: 1.25, pl: 9.5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'var(--latch-shell)', WebkitAppRegion: 'drag', userSelect: 'none' }}>
-        <Box sx={{ width: 20, height: 20, mr: 1, display: 'grid', placeItems: 'center', borderRadius: 1, border: '1px solid', borderColor: 'primary.main', transform: 'rotate(-4deg)' }}>
-          <Box sx={{ width: 8, height: 8, borderRadius: 0.5, bgcolor: 'primary.main' }} />
-        </Box>
+        <Box sx={{ mr: 1 }}><LatchMark /></Box>
         <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: '.15em' }}>LATCH</Typography>
         <Box sx={{ height: 16, mx: 1.25, borderLeft: '1px solid', borderColor: 'divider' }} />
         <Typography variant="caption" color="text.secondary">{displayConnection?.name ?? 'SQL workspace'}</Typography>
@@ -203,7 +201,7 @@ function App({ settings, onSettingsChange }: AppProps) {
           <Panel id="workspace" minSize={480}>
             {connections.length === 0 ? (
               <Stack sx={{ height: '100%', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at 50% 44%, rgba(201,245,95,.055), transparent 34%)' }}>
-                <Box sx={{ width: 62, height: 62, display: 'grid', placeItems: 'center', borderRadius: 2, border: '1px solid rgba(201,245,95,.28)', bgcolor: 'rgba(201,245,95,.04)', color: 'primary.main', transform: 'rotate(-3deg)', boxShadow: '0 24px 80px rgba(0,0,0,.4)' }}><HubRounded sx={{ fontSize: 28 }} /></Box>
+                <Box sx={{ filter: 'drop-shadow(0 24px 40px rgba(0,0,0,.45))' }}><LatchMark size={62} /></Box>
                 <Typography variant="overline" color="primary.main" sx={{ mt: 3 }}>Your SQL workbench</Typography>
                 <Typography variant="h2" align="center" sx={{ mt: 0.5, fontSize: { xs: 38, lg: 54 }, fontWeight: 500, lineHeight: 1, letterSpacing: '-.045em' }}>Every database.<br /><Box component="span" sx={{ color: 'primary.main', fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400 }}>One close connection.</Box></Typography>
                 <Typography variant="body2" align="center" color="text.secondary" sx={{ mt: 2, maxWidth: 430, lineHeight: 1.7 }}>Explore database objects and run queries across PostgreSQL, MySQL, SQL Server, Azure SQL, and SQLite.</Typography>
