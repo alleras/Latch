@@ -53,6 +53,43 @@ export interface SchemaColumn {
   primaryKey: boolean
 }
 
+export type SchemaConstraintType = 'primary-key' | 'foreign-key' | 'unique' | 'check' | 'exclusion'
+
+export interface SchemaConstraint {
+  name: string
+  type: SchemaConstraintType
+  columns: string[]
+  referencedSchema?: string
+  referencedTable?: string
+  referencedColumns?: string[]
+  expression?: string
+  onUpdate?: string
+  onDelete?: string
+}
+
+export interface SchemaIndexColumn {
+  name?: string
+  expression?: string
+  descending: boolean
+  included: boolean
+  prefixLength?: number
+}
+
+export interface SchemaIndex {
+  name: string
+  unique: boolean
+  primary: boolean
+  type?: string
+  columns: SchemaIndexColumn[]
+  predicate?: string
+}
+
+export interface SchemaDefault {
+  name?: string
+  column: string
+  expression: string
+}
+
 export type DatabaseObjectType = 'table' | 'view' | 'procedure' | 'function' | 'trigger'
 
 export interface DatabaseObject {
@@ -60,6 +97,9 @@ export interface DatabaseObject {
   schema?: string
   type: DatabaseObjectType
   columns: SchemaColumn[]
+  constraints: SchemaConstraint[]
+  indexes: SchemaIndex[]
+  defaults: SchemaDefault[]
   parentName?: string
 }
 

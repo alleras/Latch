@@ -118,7 +118,7 @@ export function ConnectionDialog({ open, providers, busy, error, onClose, onOpen
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>{provider.label}</Typography>
                   <Typography variant="caption" color="text.secondary" noWrap>{provider.description}</Typography>
                 </Box>
-                {active && <Chip label="Selected" size="small" sx={{ height: 20, fontSize: 9, bgcolor: `${color}18`, color }} />}
+                {active && <Chip label="Selected" size="small" sx={{ height: 21, fontSize: 10, bgcolor: `${color}18`, color }} />}
               </ButtonBase>
             )
           })}
@@ -140,7 +140,7 @@ export function ConnectionDialog({ open, providers, busy, error, onClose, onOpen
             <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mb: 1.5 }}>
               <Typography variant="overline" color="text.secondary">Connection details</Typography>
               <Box sx={{ height: 1, flex: 1, bgcolor: 'divider' }} />
-              {form.ssl && <Chip icon={<LockRounded />} label="TLS" size="small" color="primary" variant="outlined" sx={{ height: 22, fontSize: 9 }} />}
+              {form.ssl && <Chip icon={<LockRounded />} label="TLS" size="small" color="primary" variant="outlined" sx={{ height: 23, fontSize: 10 }} />}
             </Stack>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 112px', gap: 1.25 }}>
               <TextField label="Connection name" placeholder="Production analytics" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} sx={{ gridColumn: '1 / -1' }} />
@@ -154,7 +154,7 @@ export function ConnectionDialog({ open, providers, busy, error, onClose, onOpen
               <FormControlLabel control={<Switch size="small" checked={form.ssl} onChange={(event) => setForm({ ...form, ssl: event.target.checked })} />} label={<Typography variant="body2">Use TLS <Typography component="span" variant="caption" color="text.secondary">· {selected.id === 'azuresql' ? 'required by Azure SQL' : 'recommended remotely'}</Typography></Typography>} />
               {form.ssl && <FormControlLabel control={<Switch size="small" checked={form.trustServerCertificate} onChange={(event) => setForm({ ...form, trustServerCertificate: event.target.checked })} />} label={<Typography variant="body2">Trust server certificate <Typography component="span" variant="caption" color="warning.main">· local development only</Typography></Typography>} />}
             </Stack>
-            {error && <Alert severity="error" variant="outlined" sx={{ mt: 1.5, py: 0.25, fontSize: 11 }}>{error}</Alert>}
+            {error && <Alert severity="error" variant="outlined" sx={{ mt: 1.5, py: 0.25, fontSize: 12 }}>{error}</Alert>}
           </Box>
         )}
       </DialogContent>

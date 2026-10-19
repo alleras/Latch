@@ -143,7 +143,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
               </Box>
               <Box sx={{ maxHeight: 320, overflowY: 'auto' }}>
                 {filteredDatabases.map((name) => (
-                  <MenuItem key={name} selected={name === database} onClick={() => selectDatabase(name)} sx={{ minHeight: 32, py: 0.25, fontSize: 13 }}>
+                  <MenuItem key={name} selected={name === database} onClick={() => selectDatabase(name)} sx={{ minHeight: 34, py: 0.25, fontSize: 14 }}>
                     <Box component="span" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</Box>
                     {name === database && <CheckRounded color="primary" sx={{ ml: 1, fontSize: 16 }} />}
                   </MenuItem>

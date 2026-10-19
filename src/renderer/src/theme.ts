@@ -1,4 +1,49 @@
 import { alpha, createTheme, type PaletteMode } from '@mui/material/styles'
+import type { CSSProperties } from 'react'
+
+declare module '@mui/material/styles' {
+  interface TypographyVariants {
+    sidebarTitle: CSSProperties
+    sidebarItem: CSSProperties
+    sidebarSection: CSSProperties
+    sidebarMeta: CSSProperties
+    sidebarBadge: CSSProperties
+    sidebarCode: CSSProperties
+  }
+
+  interface TypographyVariantsOptions {
+    sidebarTitle?: CSSProperties
+    sidebarItem?: CSSProperties
+    sidebarSection?: CSSProperties
+    sidebarMeta?: CSSProperties
+    sidebarBadge?: CSSProperties
+    sidebarCode?: CSSProperties
+  }
+}
+
+declare module '@mui/material/Typography' {
+  interface TypographyPropsVariantOverrides {
+    sidebarTitle: true
+    sidebarItem: true
+    sidebarSection: true
+    sidebarMeta: true
+    sidebarBadge: true
+    sidebarCode: true
+  }
+}
+
+export const componentSizes = {
+  sidebarPanel: {
+    headerHeight: 38,
+    filterHeight: 34,
+    rowHeight: 30,
+    detailRowHeight: 28,
+    connectionRowHeight: 44,
+    icon: 15,
+    detailIcon: 14,
+    chevron: 15
+  }
+} as const
 
 const darkAccent = '#c9f55f'
 const lightAccent = '#5f8408'
@@ -66,9 +111,19 @@ export function createLatchTheme(mode: PaletteMode) {
       success: { main: mode === 'dark' ? '#8ddd8a' : '#3d8140' }
     },
     typography: {
+      fontSize: 15,
       fontFamily: '"DM Sans", system-ui, sans-serif',
-      button: { textTransform: 'none', fontWeight: 600, letterSpacing: 0 },
-      overline: { fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.14em', lineHeight: 1.6 }
+      body1: { fontSize: 15 },
+      body2: { fontSize: 14 },
+      caption: { fontSize: 12 },
+      button: { fontSize: 14, textTransform: 'none', fontWeight: 600, letterSpacing: 0 },
+      overline: { fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', lineHeight: 1.6 },
+      sidebarTitle: { fontSize: 13, fontWeight: 700, lineHeight: 1.35 },
+      sidebarItem: { fontSize: 13, fontWeight: 400, lineHeight: 1.35 },
+      sidebarSection: { fontSize: 12, fontWeight: 600, lineHeight: 1.35 },
+      sidebarMeta: { fontSize: 11, fontWeight: 400, lineHeight: 1.35 },
+      sidebarBadge: { fontSize: 10, fontWeight: 700, lineHeight: 1.35, fontFamily: '"DM Mono", monospace', letterSpacing: '0.02em' },
+      sidebarCode: { fontSize: 12, fontWeight: 400, lineHeight: 1.45, fontFamily: '"DM Mono", monospace' }
     },
     shape: { borderRadius: 8 },
     components: {
@@ -122,7 +177,7 @@ export function createLatchTheme(mode: PaletteMode) {
         styleOverrides: {
           root: {
             background: colors.editor,
-            fontSize: 12,
+            fontSize: 13,
             '& fieldset': { borderColor: colors.divider },
             '&:hover fieldset': { borderColor: colors.secondaryText }
           }
@@ -130,11 +185,11 @@ export function createLatchTheme(mode: PaletteMode) {
       },
       MuiTooltip: {
         defaultProps: { arrow: true, enterDelay: 500 },
-        styleOverrides: { tooltip: { background: '#252a31', color: '#f3f5f0', fontSize: 10 } }
+        styleOverrides: { tooltip: { background: '#252a31', color: '#f3f5f0', fontSize: 12 } }
       },
       MuiTableCell: {
         styleOverrides: {
-          root: { borderColor: colors.gridBorder, fontFamily: '"DM Mono", monospace', fontSize: 11, whiteSpace: 'nowrap' },
+          root: { borderColor: colors.gridBorder, fontFamily: '"DM Mono", monospace', fontSize: 12, whiteSpace: 'nowrap' },
           head: { background: colors.gridHeader, color: colors.secondaryText, fontWeight: 500 }
         }
       }

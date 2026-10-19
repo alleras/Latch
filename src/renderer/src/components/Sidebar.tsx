@@ -21,24 +21,28 @@ import {
 } from '@mui/material'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import type { Connection, DatabaseObject, ProviderDefinition } from '../../../shared/types'
+import { componentSizes } from '../theme'
 import { DatabaseExplorer } from './DatabaseExplorer'
 import { ProviderIcon, providerColor } from './ProviderIcon'
+
+const SIDEBAR_SIZE = componentSizes.sidebarPanel
 
 interface SidebarProps {
   connections: Connection[]
   providers: ProviderDefinition[]
   activeConnection: Connection | null
   activeDatabase?: string
-  databases: string[]
-  loadingDatabases: boolean
+  databasesByConnection: Record<string, string[]>
+  loadingDatabaseIds: Set<string>
   loadingSchema: boolean
   schema: DatabaseObject[]
   onAdd: () => void
   onSelectConnection: (id: string) => void
   onRemoveConnection: (id: string) => void
-  onSelectDatabase: (database: string) => void
+  onExpandConnection: (id: string) => void
+  onSelectDatabase: (connectionId: string, database: string) => void
   onOpenQuery: (connectionId: string, database?: string) => void
-  onRefreshDatabases: () => void
+  onRefreshDatabases: (connectionId: string) => void
   onRefreshSchema: () => void
 }
 
@@ -46,8 +50,8 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
   const sidebarLayout = useDefaultLayout({ id: 'sidebar-panels', storage: localStorage })
   const {
-    connections, providers, activeConnection, activeDatabase, databases, loadingDatabases, loadingSchema, schema,
-    onAdd, onSelectConnection, onRemoveConnection, onSelectDatabase,
+    connections, providers, activeConnection, activeDatabase, databasesByConnection, loadingDatabaseIds, loadingSchema, schema,
+    onAdd, onSelectConnection, onRemoveConnection, onExpandConnection, onSelectDatabase,
     onOpenQuery, onRefreshDatabases, onRefreshSchema
   } = props
   const [databaseMenu, setDatabaseMenu] = useState<{
@@ -63,10 +67,13 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   }, [activeConnection])
 
   const provider = (connection: Connection) => providers.find((item) => item.id === connection.provider)
-  const toggle = (values: Set<string>, value: string, setter: (next: Set<string>) => void): void => {
-    const next = new Set(values)
-    next.has(value) ? next.delete(value) : next.add(value)
-    setter(next)
+  const toggleServer = (connectionId: string, expanded: boolean): void => {
+    setExpandedServers((current) => {
+      const next = new Set(current)
+      expanded ? next.delete(connectionId) : next.add(connectionId)
+      return next
+    })
+    if (!expanded) onExpandConnection(connectionId)
   }
 
   const openDatabaseMenu = (event: MouseEvent<HTMLElement>, connectionId: string, database: string): void => {
@@ -85,9 +92,9 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
       <Group orientation="vertical" id="sidebar-panels" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged} style={{ height: '100%' }}>
         <Panel id="connections" defaultSize="42%" minSize={96}>
           <Box sx={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <Stack direction="row" sx={{ height: 34, alignItems: 'center', px: 1.25, flex: '0 0 auto' }}>
+            <Stack direction="row" sx={{ height: SIDEBAR_SIZE.headerHeight, alignItems: 'center', px: 1.25, flex: '0 0 auto' }}>
               <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>Connections</Typography>
-              <Tooltip title="Add connection"><IconButton size="small" onClick={onAdd}><AddRounded sx={{ fontSize: 17 }} /></IconButton></Tooltip>
+              <Tooltip title="Add connection"><IconButton size="small" onClick={onAdd}><AddRounded sx={{ fontSize: SIDEBAR_SIZE.icon }} /></IconButton></Tooltip>
             </Stack>
 
             <List disablePadding sx={{ px: 0.75, pb: 0.75, flex: 1, minHeight: 0, overflow: 'auto' }}>
@@ -96,6 +103,8 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 const expanded = expandedServers.has(connection.id)
                 const canExpand = connection.provider !== 'sqlite'
                 const color = providerColor[connection.provider]
+                const connectionDatabases = databasesByConnection[connection.id] ?? []
+                const loadingDatabases = loadingDatabaseIds.has(connection.id)
                 return (
                   <Box key={connection.id}>
                     <ListItemButton
@@ -105,7 +114,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                         position: 'sticky',
                         top: 0,
                         zIndex: 2,
-                        minHeight: 40,
+                        minHeight: SIDEBAR_SIZE.connectionRowHeight,
                         px: 0.75,
                         py: 0.25,
                         borderRadius: 1,
@@ -120,42 +129,42 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                         <IconButton
                           size="small"
                           aria-label={expanded ? 'Collapse server' : 'Expand server'}
-                          onClick={(event) => { event.stopPropagation(); if (!active) onSelectConnection(connection.id); toggle(expandedServers, connection.id, setExpandedServers) }}
+                          onClick={(event) => { event.stopPropagation(); toggleServer(connection.id, expanded) }}
                           sx={{ width: 22, height: 22, mr: 0.25 }}
                         >
-                          {expanded ? <ExpandMoreRounded sx={{ fontSize: 15 }} /> : <ChevronRightRounded sx={{ fontSize: 15 }} />}
+                          {expanded ? <ExpandMoreRounded sx={{ fontSize: SIDEBAR_SIZE.chevron }} /> : <ChevronRightRounded sx={{ fontSize: SIDEBAR_SIZE.chevron }} />}
                         </IconButton>
                       ) : <Box sx={{ width: 22, mr: 0.25 }} />}
                       <Box sx={{ width: 26, height: 26, mr: 0.75, display: 'grid', placeItems: 'center', borderRadius: 1, color, bgcolor: `${color}10` }}>
-                        <ProviderIcon provider={connection.provider} sx={{ fontSize: 15 }} />
+                        <ProviderIcon provider={connection.provider} sx={{ fontSize: SIDEBAR_SIZE.icon }} />
                       </Box>
                       <ListItemText
                         primary={connection.name}
                         secondary={connection.provider === 'sqlite' ? provider(connection)?.label : `${provider(connection)?.label} · ${connection.host}`}
-                        slotProps={{ primary: { noWrap: true, sx: { fontSize: 11.5, fontWeight: 600, lineHeight: 1.25 } }, secondary: { noWrap: true, sx: { fontSize: 9.5, lineHeight: 1.25 } } }}
+                        slotProps={{ primary: { variant: 'sidebarTitle', noWrap: true }, secondary: { variant: 'sidebarMeta', noWrap: true } }}
                       />
-                      <IconButton className="remove-connection" size="small" onClick={(event) => { event.stopPropagation(); onRemoveConnection(connection.id) }}><CloseRounded sx={{ fontSize: 13 }} /></IconButton>
+                      <IconButton className="remove-connection" size="small" onClick={(event) => { event.stopPropagation(); onRemoveConnection(connection.id) }}><CloseRounded sx={{ fontSize: SIDEBAR_SIZE.detailIcon }} /></IconButton>
                     </ListItemButton>
 
-                    {active && expanded && canExpand && (
+                    {expanded && canExpand && (
                       <Box sx={{ ml: 2.1, pl: 1, borderLeft: '1px solid', borderColor: 'divider' }}>
-                        <Stack direction="row" sx={{ height: 24, alignItems: 'center', pl: 0.5 }}>
-                          <Typography variant="overline" color="text.disabled" sx={{ flex: 1, fontSize: 8 }}>Databases · {databases.length}</Typography>
-                          <Tooltip title="Refresh databases"><IconButton size="small" onClick={onRefreshDatabases}>{loadingDatabases ? <CircularProgress size={11} /> : <RefreshRounded sx={{ fontSize: 12 }} />}</IconButton></Tooltip>
+                        <Stack direction="row" sx={{ height: SIDEBAR_SIZE.detailRowHeight, alignItems: 'center', pl: 0.5 }}>
+                          <Typography variant="sidebarMeta" color="text.disabled" sx={{ flex: 1 }}>Databases · {connectionDatabases.length}</Typography>
+                          <Tooltip title="Refresh databases"><IconButton size="small" onClick={() => onRefreshDatabases(connection.id)}>{loadingDatabases ? <CircularProgress size={SIDEBAR_SIZE.detailIcon} /> : <RefreshRounded sx={{ fontSize: SIDEBAR_SIZE.detailIcon }} />}</IconButton></Tooltip>
                         </Stack>
-                        {databases.map((database) => (
-                          <ListItemButton key={database} selected={database === activeDatabase} onClick={() => onSelectDatabase(database)} onContextMenu={(event) => openDatabaseMenu(event, connection.id, database)} sx={{ minHeight: 24, px: 0.75, py: 0, borderRadius: 0.75, '&.Mui-selected': { bgcolor: 'action.selected' } }}>
-                            <StorageRounded sx={{ mr: 0.75, fontSize: 12, color: database === activeDatabase ? 'primary.main' : 'text.disabled' }} />
-                            <ListItemText primary={database} slotProps={{ primary: { noWrap: true, sx: { fontSize: 10.5, lineHeight: 1.2 } } }} />
+                        {connectionDatabases.map((database) => (
+                          <ListItemButton key={database} selected={active && database === activeDatabase} onClick={() => onSelectDatabase(connection.id, database)} onContextMenu={(event) => openDatabaseMenu(event, connection.id, database)} sx={{ minHeight: SIDEBAR_SIZE.rowHeight, px: 0.75, py: 0, borderRadius: 0.75, '&.Mui-selected': { bgcolor: 'action.selected' } }}>
+                            <StorageRounded sx={{ mr: 0.75, fontSize: SIDEBAR_SIZE.detailIcon, color: active && database === activeDatabase ? 'primary.main' : 'text.disabled' }} />
+                            <ListItemText primary={database} slotProps={{ primary: { variant: 'sidebarItem', noWrap: true } }} />
                           </ListItemButton>
                         ))}
-                        {!loadingDatabases && databases.length === 0 && <Typography variant="caption" color="text.disabled" sx={{ display: 'block', px: 1, py: 0.5 }}>No visible databases</Typography>}
+                        {!loadingDatabases && connectionDatabases.length === 0 && <Typography variant="sidebarMeta" color="text.disabled" sx={{ display: 'block', px: 1, py: 0.5 }}>No visible databases</Typography>}
                       </Box>
                     )}
                   </Box>
                 )
               })}
-              {connections.length === 0 && <Typography variant="caption" color="text.disabled" sx={{ display: 'block', px: 1, py: 1 }}>No connections yet.</Typography>}
+              {connections.length === 0 && <Typography variant="sidebarMeta" color="text.disabled" sx={{ display: 'block', px: 1, py: 1 }}>No connections yet.</Typography>}
             </List>
           </Box>
         </Panel>
@@ -174,10 +183,10 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             />
           ) : (
             <Box sx={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              <Stack direction="row" sx={{ height: 34, alignItems: 'center', px: 1.25 }}>
+              <Stack direction="row" sx={{ height: SIDEBAR_SIZE.headerHeight, alignItems: 'center', px: 1.25 }}>
                 <Typography variant="overline" color="text.secondary">Database Explorer</Typography>
               </Stack>
-              <Typography variant="caption" color="text.disabled" sx={{ px: 1.5, py: 0.75 }}>Select a connection to browse database objects.</Typography>
+              <Typography variant="sidebarMeta" color="text.disabled" sx={{ px: 1.5, py: 0.75 }}>Select a connection to browse database objects.</Typography>
             </Box>
           )}
         </Panel>

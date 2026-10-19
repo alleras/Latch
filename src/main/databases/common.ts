@@ -10,3 +10,12 @@ export function serializeRows(rows: Record<string, unknown>[]): Record<string, u
   ))
 }
 
+export function pushGrouped<K, V>(groups: Map<K, V[]>, key: K, value: V): void {
+  const values = groups.get(key)
+  if (values) values.push(value)
+  else groups.set(key, [value])
+}
+
+export function relationKey(schema: string | undefined, table: string): string {
+  return JSON.stringify([schema ?? '', table])
+}

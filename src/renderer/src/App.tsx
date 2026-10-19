@@ -71,14 +71,12 @@ function App({ settings, onSettingsChange }: AppProps) {
   const {
     database: explorerDatabase,
     connection: explorerConnection,
-    databases: explorerDatabases,
     schema: explorerSchema,
     initialize: initializeExplorer,
     selectConnection: selectExplorerConnection,
     selectDatabase: selectExplorerDatabase,
     selectAddedConnection,
     handleConnectionRemoved,
-    refreshDatabases: refreshActiveDatabases,
     refreshSchema: refreshActiveSchema
   } = useDatabaseExplorer({
     connections,
@@ -155,6 +153,18 @@ function App({ settings, onSettingsChange }: AppProps) {
     handleConnectionRemoved(connectionId, remaining)
   }, [closeTabsForConnection, evictConnection, handleConnectionRemoved, removeManagedConnection])
 
+  const expandConnection = useCallback((connectionId: string): void => {
+    const connection = connections.find((candidate) => candidate.id === connectionId)
+    if (!connection || connection.provider === 'sqlite') return
+    void loadDatabases(connection).catch(console.error)
+  }, [connections, loadDatabases])
+
+  const refreshConnectionDatabases = useCallback((connectionId: string): void => {
+    const connection = connections.find((candidate) => candidate.id === connectionId)
+    if (!connection || connection.provider === 'sqlite') return
+    void loadDatabases(connection, true).catch(console.error)
+  }, [connections, loadDatabases])
+
   const displayConnection = tabConnection ?? explorerConnection
 
   return (
@@ -182,16 +192,17 @@ function App({ settings, onSettingsChange }: AppProps) {
               providers={providers}
               activeConnection={explorerConnection}
               activeDatabase={explorerDatabase}
-              databases={explorerDatabases}
-              loadingDatabases={Boolean(explorerConnection && loadingDatabaseIds.has(explorerConnection.id))}
+              databasesByConnection={databasesByConnection}
+              loadingDatabaseIds={loadingDatabaseIds}
               loadingSchema={Boolean(explorerConnection && loadingSchemaKeys.has(connectionDatabaseKey(explorerConnection.id, explorerDatabase)))}
               schema={explorerSchema}
               onAdd={openConnectionDialog}
               onSelectConnection={selectExplorerConnection}
               onRemoveConnection={removeConnection}
+              onExpandConnection={expandConnection}
               onSelectDatabase={selectExplorerDatabase}
               onOpenQuery={openQuery}
-              onRefreshDatabases={refreshActiveDatabases}
+              onRefreshDatabases={refreshConnectionDatabases}
               onRefreshSchema={refreshActiveSchema}
             />
           </Panel>

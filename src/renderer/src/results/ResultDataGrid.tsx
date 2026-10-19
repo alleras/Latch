@@ -16,8 +16,8 @@ import type { QueryResult } from '../../../shared/types'
 import { resultValueText } from './result-copy'
 import type { SelectionModifiers } from './result-selection'
 
-const RESULT_ROW_HEIGHT = 30
-const RESULT_HEADER_HEIGHT = 34
+const RESULT_ROW_HEIGHT = 32
+const RESULT_HEADER_HEIGHT = 36
 const ROW_NUMBER_WIDTH = 58
 const MIN_COLUMN_WIDTH = 120
 const MAX_COLUMN_WIDTH = 360
@@ -60,7 +60,7 @@ function initialColumnWidths(result: QueryResult): number[] {
     for (let rowIndex = 0; rowIndex < sampleCount; rowIndex += 1) {
       characterCount = Math.max(characterCount, estimatedValueLength(result.rows[rowIndex][column]))
     }
-    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, characterCount * 7 + 28))
+    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, characterCount * 8 + 28))
   })
 }
 

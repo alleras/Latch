@@ -94,7 +94,8 @@ export function useDatabaseExplorer({
     setDatabase(undefined)
   }, [])
 
-  const selectDatabase = useCallback((nextDatabase: string): void => {
+  const selectDatabase = useCallback((nextConnectionId: string, nextDatabase: string): void => {
+    setConnectionId(nextConnectionId)
     setDatabase(nextDatabase)
   }, [])
 

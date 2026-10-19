@@ -215,11 +215,11 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
         <Tabs
           value={activeView}
           onChange={(_event, value: ResultView) => setActiveView(value)}
-          sx={{ minHeight: 40, alignSelf: 'stretch', '& .MuiTabs-indicator': { height: 2 }, '& .MuiTab-root': { minWidth: 0, minHeight: 40, px: 1, py: 0, fontSize: 10.5, textTransform: 'none' } }}
+          sx={{ minHeight: 40, alignSelf: 'stretch', '& .MuiTabs-indicator': { height: 2 }, '& .MuiTab-root': { minWidth: 0, minHeight: 40, px: 1, py: 0, fontSize: 12, textTransform: 'none' } }}
         >
           <Tab
             value="results"
-            label={<Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}><span>Results</span>{result && result.columns.length > 0 && <Chip label={result.rowCount} size="small" sx={{ height: 18, fontSize: 9 }} />}</Stack>}
+            label={<Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}><span>Results</span>{result && result.columns.length > 0 && <Chip label={result.rowCount} size="small" sx={{ height: 19, fontSize: 10 }} />}</Stack>}
           />
           <Tab value="messages" label="Messages" />
         </Tabs>
@@ -233,7 +233,7 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
           startIcon={<ContentCopyRounded />}
           endIcon={activeView === 'results' ? <ArrowDropDownRounded /> : undefined}
           onClick={activeView === 'results' ? openCopyMenu : copyMessages}
-          sx={{ minWidth: 0, height: 28, px: 0.75, fontSize: 10.5 }}
+          sx={{ minWidth: 0, height: 30, px: 0.75, fontSize: 12 }}
         >
           Copy
         </Button>

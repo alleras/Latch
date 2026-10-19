@@ -98,7 +98,7 @@ body,
   --rdg-checkbox-focus-color: var(--latch-accent);
   border: 0;
   font-family: 'DM Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   user-select: none;
   -webkit-user-select: none;
 }
