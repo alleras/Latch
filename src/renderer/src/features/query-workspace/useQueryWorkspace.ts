@@ -3,7 +3,7 @@ import type { Connection, SqlFile } from '../../../../shared/types'
 import { mayChangeSchema } from '../../../../shared/sql'
 import type { SqlEditorHandle } from '../../components/SqlEditor'
 import { readableErrorMessage } from '../../errors'
-import { fileTitle, findTabForPath, partitionTabsForRemovedConnection } from '../../query-files'
+import { defaultSavePath, fileTitle, findTabForPath, partitionTabsForRemovedConnection } from '../../query-files'
 import {
   tabIdsForCloseScope,
   updateQueryTab,
@@ -188,6 +188,63 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     }
   }, [])
 
+  /**
+   * Removes tabs along with their drafts and any unsaved-edit backups. When the active tab is
+   * among them, the tab at `anchorIndex` in the remaining list becomes active.
+   */
+  const removeTabs = useCallback((ids: Set<string>, anchorIndex = 0): void => {
+    if (ids.size === 0) return
+    ids.forEach((id) => {
+      draftsRef.current.delete(id)
+      void window.latch.deleteDraftBackup(id).catch(() => undefined)
+    })
+    setTabs((current) => {
+      const remaining = current.filter((tab) => !ids.has(tab.id))
+      setActiveTabId((currentId) => {
+        if (currentId && !ids.has(currentId)) return currentId
+        return remaining[Math.min(Math.max(anchorIndex, 0), remaining.length - 1)]?.id ?? null
+      })
+      return remaining
+    })
+  }, [])
+
+  const saveTabAs = useCallback(async (tabId: string): Promise<boolean> => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId)
+    if (!tab || tab.loading) return false
+    try {
+      const path = await window.latch.chooseSqlFilePath(defaultSavePath(tab))
+      if (!path) return false
+      await window.latch.writeSqlFile(path, draftsRef.current.get(tabId) ?? '')
+      // Two tabs never share a path: the file now holds what was just saved, so the other tab goes.
+      const duplicate = findTabForPath(tabsRef.current, path)
+      if (duplicate && duplicate.id !== tabId) removeTabs(new Set([duplicate.id]))
+      editorRef.current?.markSaved(tabId)
+      setTabs((current) => updateQueryTab(current, tabId, { filePath: path, title: fileTitle(path), unsaved: false }))
+      await window.latch.deleteDraftBackup(tabId).catch(() => undefined)
+      return true
+    } catch (error) {
+      showNotice(readableErrorMessage(error))
+      return false
+    }
+  }, [removeTabs, showNotice])
+
+  /** Writes a file tab back to disk. An untitled tab asks for a location first. */
+  const saveTab = useCallback(async (tabId: string): Promise<boolean> => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId)
+    if (!tab || tab.loading) return false
+    if (tab.filePath === undefined) return saveTabAs(tabId)
+    try {
+      await window.latch.writeSqlFile(tab.filePath, draftsRef.current.get(tabId) ?? '')
+      editorRef.current?.markSaved(tabId)
+      setTabs((current) => updateQueryTab(current, tabId, { unsaved: false }))
+      await window.latch.deleteDraftBackup(tabId).catch(() => undefined)
+      return true
+    } catch (error) {
+      showNotice(readableErrorMessage(error))
+      return false
+    }
+  }, [saveTabAs, showNotice])
+
   const closeTabs = useCallback((tabId: string, scope: CloseTabScope = 'tab'): void => {
     setTabs((current) => {
       const index = current.findIndex((tab) => tab.id === tabId)
@@ -292,6 +349,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     initialize,
     openQuery,
     openFiles,
+    saveTab,
+    saveTabAs,
     closeTabs,
     attachConnection,
     releaseConnection,

@@ -56,6 +56,8 @@ function App({ settings, onSettingsChange }: AppProps) {
     initialize: initializeWorkspace,
     openQuery,
     openFiles,
+    saveTab,
+    saveTabAs,
     closeTabs,
     attachConnection,
     releaseConnection,
@@ -174,10 +176,13 @@ function App({ settings, onSettingsChange }: AppProps) {
         void openFilesFromDialog()
         break
       case 'save':
+        if (activeTabRef.current) void saveTab(activeTabRef.current.id)
+        break
       case 'save-as':
+        if (activeTabRef.current) void saveTabAs(activeTabRef.current.id)
         break
     }
-  }, [addQueryFromExplorer, openFilesFromDialog])
+  }, [addQueryFromExplorer, openFilesFromDialog, saveTab, saveTabAs])
 
   useEffect(() => window.latch.onMenuCommand(handleMenuCommand), [handleMenuCommand])
 
