@@ -49,8 +49,13 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
   const persist = useCallback((): void => {
     if (!initializedRef.current) return
     const snapshot = createQueryWorkspaceSnapshot(tabsRef.current, draftsRef.current, activeTabIdRef.current)
-    localStorage.setItem(QUERY_WORKSPACE_STORAGE_KEY, JSON.stringify(snapshot))
-    localStorage.removeItem(LEGACY_QUERY_STORAGE_KEY)
+    try {
+      localStorage.setItem(QUERY_WORKSPACE_STORAGE_KEY, JSON.stringify(snapshot))
+      localStorage.removeItem(LEGACY_QUERY_STORAGE_KEY)
+    } catch (error) {
+      // Quota or storage failures must not throw out of a timer; the previous snapshot stays.
+      console.error('Failed to persist the query workspace.', error)
+    }
   }, [])
 
   const schedulePersist = useCallback((): void => {

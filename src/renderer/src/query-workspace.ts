@@ -8,7 +8,10 @@ interface PersistedQueryTab {
   title: string
   connectionId: string | null
   database?: string
-  query: string
+  /** Draft text. Absent for file tabs, whose text lives on disk or in a backup. */
+  query?: string
+  filePath?: string
+  unsaved?: boolean
 }
 
 export interface QueryWorkspaceSnapshot {
@@ -43,19 +46,22 @@ export function readQueryWorkspace(value: string | null): QueryWorkspaceSnapshot
     const tabs = candidate.tabs.flatMap((value): PersistedQueryTab[] => {
       if (!value || typeof value !== 'object') return []
       const tab = value as Record<string, unknown>
+      const connectionId = tab.connectionId === null ? null : typeof tab.connectionId === 'string' ? tab.connectionId : undefined
+      const query = typeof tab.query === 'string' ? tab.query : undefined
+      const filePath = optionalString(tab.filePath)
       if (
         typeof tab.id !== 'string'
         || typeof tab.title !== 'string'
-        || typeof tab.connectionId !== 'string'
-        || typeof tab.query !== 'string'
+        || connectionId === undefined
+        || (query === undefined && filePath === undefined)
       ) return []
 
       return [{
         id: tab.id,
         title: tab.title,
-        connectionId: tab.connectionId,
+        connectionId,
         database: optionalString(tab.database),
-        query: tab.query
+        ...(filePath === undefined ? { query: query ?? '' } : { filePath, unsaved: tab.unsaved === true })
       }]
     })
 
@@ -77,22 +83,30 @@ export function restoreQueryWorkspace(
 ): RestoredQueryWorkspace {
   const seenTabIds = new Set<string>()
   const persistedTabs = snapshot?.tabs.filter((tab) => {
-    if (tab.connectionId === null || !validConnectionIds.has(tab.connectionId) || seenTabIds.has(tab.id)) return false
+    if (seenTabIds.has(tab.id)) return false
+    const connectionKnown = tab.connectionId !== null && validConnectionIds.has(tab.connectionId)
+    // Untitled drafts belong to their connection; file tabs survive without one.
+    if (!connectionKnown && tab.filePath === undefined) return false
     seenTabIds.add(tab.id)
     return true
   }) ?? []
-  const tabs = persistedTabs.map<QueryTabState>((tab) => ({
-    id: tab.id,
-    title: tab.title,
-    connectionId: tab.connectionId,
-    database: tab.database,
-    unsaved: false,
-    loading: false,
-    result: null,
-    error: null,
-    running: false
-  }))
-  const drafts = new Map(persistedTabs.map((tab) => [tab.id, tab.query]))
+  const tabs = persistedTabs.map<QueryTabState>((tab) => {
+    const connectionKnown = tab.connectionId !== null && validConnectionIds.has(tab.connectionId)
+    const isFile = tab.filePath !== undefined
+    return {
+      id: tab.id,
+      title: tab.title,
+      connectionId: connectionKnown ? tab.connectionId : null,
+      database: connectionKnown ? tab.database : undefined,
+      filePath: tab.filePath,
+      unsaved: isFile && tab.unsaved === true,
+      loading: isFile,
+      result: null,
+      error: null,
+      running: false
+    }
+  })
+  const drafts = new Map(persistedTabs.flatMap((tab) => tab.filePath === undefined ? [[tab.id, tab.query ?? ''] as const] : []))
   const activeTabId = tabs.some((tab) => tab.id === snapshot?.activeTabId)
     ? snapshot?.activeTabId ?? null
     : tabs[0]?.id ?? null
@@ -128,7 +142,9 @@ export function createQueryWorkspaceSnapshot(
       title: tab.title,
       connectionId: tab.connectionId,
       database: tab.database,
-      query: drafts.get(tab.id) ?? ''
+      ...(tab.filePath === undefined
+        ? { query: drafts.get(tab.id) ?? '' }
+        : { filePath: tab.filePath, unsaved: tab.unsaved })
     }))
   }
 }
