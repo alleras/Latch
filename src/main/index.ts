@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { registerIpc } from './ipc'
+import { installApplicationMenu } from './menu'
 import { closeAllProviderConnections } from './providers'
 
 const windows = new Set<BrowserWindow>()
@@ -49,6 +50,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerIpc()
+  installApplicationMenu()
   createWindow()
   app.on('activate', () => {
     if (windows.size === 0) createWindow()
