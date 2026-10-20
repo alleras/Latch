@@ -10,6 +10,7 @@ import { ConnectionDialog } from './components/ConnectionDialog'
 import { LatchMark } from './components/LatchMark'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
+import { UnsavedChangesDialog } from './components/UnsavedChangesDialog'
 import { readableErrorMessage } from './errors'
 import { preferredDatabase, useDatabaseCatalog } from './features/database-catalog/useDatabaseCatalog'
 import { useConnectionManager } from './features/connections/useConnectionManager'
@@ -58,7 +59,9 @@ function App({ settings, onSettingsChange }: AppProps) {
     openFiles,
     saveTab,
     saveTabAs,
-    closeTabs,
+    requestCloseTabs,
+    closePrompt,
+    answerClosePrompt,
     attachConnection,
     releaseConnection,
     selectTab,
@@ -302,7 +305,7 @@ function App({ settings, onSettingsChange }: AppProps) {
                 databasesByConnection={databasesByConnection}
                 schemasByContext={schemasByContext}
                 onSelectTab={selectTab}
-                onCloseTabs={closeTabs}
+                onCloseTabs={requestCloseTabs}
                 onAddTab={addQueryFromExplorer}
                 onDatabaseChange={changeDatabase}
                 onQueryChange={updateDraft}
@@ -330,6 +333,13 @@ function App({ settings, onSettingsChange }: AppProps) {
         settings={settings}
         onClose={() => setSettingsDialogOpen(false)}
         onSave={onSettingsChange}
+      />
+      <UnsavedChangesDialog
+        open={Boolean(closePrompt)}
+        fileName={closePrompt?.title ?? ''}
+        onSave={() => answerClosePrompt('save')}
+        onDiscard={() => answerClosePrompt('discard')}
+        onCancel={() => answerClosePrompt('cancel')}
       />
       <Snackbar
         open={Boolean(notice)}

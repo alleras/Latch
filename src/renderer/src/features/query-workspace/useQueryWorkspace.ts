@@ -3,7 +3,7 @@ import type { Connection, SqlFile } from '../../../../shared/types'
 import { mayChangeSchema } from '../../../../shared/sql'
 import type { SqlEditorHandle } from '../../components/SqlEditor'
 import { readableErrorMessage } from '../../errors'
-import { defaultSavePath, fileTitle, findTabForPath, partitionTabsForRemovedConnection } from '../../query-files'
+import { defaultSavePath, fileTitle, findTabForPath, partitionTabsForRemovedConnection, unsavedFileTabs } from '../../query-files'
 import {
   tabIdsForCloseScope,
   updateQueryTab,
@@ -38,6 +38,10 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   /** A dismissable message about a file operation; query errors use the per-tab error area instead. */
   const [notice, setNotice] = useState<string | null>(null)
+  /** The unsaved file tab currently being asked about during a close. */
+  const [closePrompt, setClosePrompt] = useState<{ tabId: string; title: string } | null>(null)
+  /** A close in progress: every tab to close, where to land afterwards, and the unsaved tabs still to ask about. */
+  const pendingCloseRef = useRef<{ ids: Set<string>; anchorIndex: number; queue: string[] } | null>(null)
   /** The mounted SQL editor. Owned here so save and reload workflows can update Monaco models. */
   const editorRef = useRef<SqlEditorHandle | null>(null)
   const tabsRef = useRef(tabs)
@@ -245,19 +249,64 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     }
   }, [saveTabAs, showNotice])
 
-  const closeTabs = useCallback((tabId: string, scope: CloseTabScope = 'tab'): void => {
-    setTabs((current) => {
-      const index = current.findIndex((tab) => tab.id === tabId)
-      const removedIds = tabIdsForCloseScope(current, tabId, scope)
-      removedIds.forEach((removedId) => draftsRef.current.delete(removedId))
-      const remaining = current.filter((tab) => !removedIds.has(tab.id))
-      setActiveTabId((currentId) => {
-        if (currentId && !removedIds.has(currentId)) return currentId
-        return remaining[Math.min(Math.max(index, 0), remaining.length - 1)]?.id ?? null
-      })
-      return remaining
-    })
-  }, [])
+  /** Shows the prompt for the next queued tab, or closes everything once the queue is empty. */
+  const continuePendingClose = useCallback((): void => {
+    const pending = pendingCloseRef.current
+    if (!pending) return
+    const nextId = pending.queue[0]
+    if (nextId === undefined) {
+      pendingCloseRef.current = null
+      setClosePrompt(null)
+      removeTabs(pending.ids, pending.anchorIndex)
+      return
+    }
+    const tab = tabsRef.current.find((candidate) => candidate.id === nextId)
+    setClosePrompt({ tabId: nextId, title: tab?.title ?? 'file' })
+  }, [removeTabs])
+
+  /**
+   * Every way of closing tabs goes through here. Unsaved file tabs in the set are asked about one at
+   * a time, in tab order; only after every answer do the tabs close together. Cancel closes nothing.
+   */
+  const requestCloseTabs = useCallback((tabId: string, scope: CloseTabScope = 'tab'): void => {
+    if (pendingCloseRef.current) return
+    const current = tabsRef.current
+    const ids = tabIdsForCloseScope(current, tabId, scope)
+    if (ids.size === 0) return
+    const anchorIndex = Math.max(current.findIndex((tab) => tab.id === tabId), 0)
+    const queue = unsavedFileTabs(current, ids).map((tab) => tab.id)
+    if (queue.length === 0) {
+      removeTabs(ids, anchorIndex)
+      return
+    }
+    pendingCloseRef.current = { ids, anchorIndex, queue }
+    continuePendingClose()
+  }, [continuePendingClose, removeTabs])
+
+  const answerClosePrompt = useCallback((answer: 'save' | 'discard' | 'cancel'): void => {
+    const pending = pendingCloseRef.current
+    if (!pending) return
+    const [currentId, ...rest] = pending.queue
+    const cancel = (): void => {
+      pendingCloseRef.current = null
+      setClosePrompt(null)
+    }
+    if (answer === 'cancel' || currentId === undefined) {
+      cancel()
+      return
+    }
+    const advance = (): void => {
+      if (pendingCloseRef.current !== pending) return
+      pendingCloseRef.current = { ...pending, queue: rest }
+      continuePendingClose()
+    }
+    if (answer === 'discard') {
+      advance()
+      return
+    }
+    // A failed or cancelled save keeps the tab and stops the batch, exactly like Cancel.
+    void saveTab(currentId).then((saved) => (saved ? advance() : cancel()))
+  }, [continuePendingClose, saveTab])
 
   /** Gives a connectionless tab an execution target. Tabs that already have one are left alone. */
   const attachConnection = useCallback((tabId: string, connectionId: string, database?: string): void => {
@@ -283,8 +332,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
   }, [])
 
   useEffect(() => window.latch.onCloseActiveTab(() => {
-    if (activeTabIdRef.current) closeTabs(activeTabIdRef.current)
-  }), [closeTabs])
+    if (activeTabIdRef.current) requestCloseTabs(activeTabIdRef.current)
+  }), [requestCloseTabs])
 
   const updateDraft = useCallback((tabId: string, query: string, unsaved: boolean): void => {
     draftsRef.current.set(tabId, query)
@@ -351,7 +400,9 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     openFiles,
     saveTab,
     saveTabAs,
-    closeTabs,
+    requestCloseTabs,
+    closePrompt,
+    answerClosePrompt,
     attachConnection,
     releaseConnection,
     selectTab: setActiveTabId,
