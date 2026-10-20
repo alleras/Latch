@@ -111,6 +111,14 @@ export interface QueryResult {
   message?: string
 }
 
+export type MenuCommand = 'new-query' | 'open-file' | 'save' | 'save-as'
+
+export interface SqlFile {
+  path: string
+  name: string
+  content: string
+}
+
 export interface LatchApi {
   listProviders: () => Promise<ProviderDefinition[]>
   listConnections: () => Promise<Connection[]>
@@ -123,4 +131,16 @@ export interface LatchApi {
   executeQuery: (connectionId: string, database: string | undefined, sql: string) => Promise<QueryResult>
   writeClipboard: (text: string) => Promise<void>
   onCloseActiveTab: (callback: () => void) => () => void
+  /** Shows the open dialog and reads the chosen files. Empty when cancelled. */
+  openSqlFiles: () => Promise<SqlFile[]>
+  readSqlFile: (path: string) => Promise<SqlFile>
+  writeSqlFile: (path: string, content: string) => Promise<void>
+  /** Shows the save dialog. Null when cancelled. */
+  chooseSqlFilePath: (defaultPath: string) => Promise<string | null>
+  writeDraftBackup: (tabId: string, content: string) => Promise<void>
+  writeDraftBackupSync: (tabId: string, content: string) => void
+  /** Null when no backup exists for the tab. */
+  readDraftBackup: (tabId: string) => Promise<string | null>
+  deleteDraftBackup: (tabId: string) => Promise<void>
+  onMenuCommand: (callback: (command: MenuCommand) => void) => () => void
 }
