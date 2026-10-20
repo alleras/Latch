@@ -74,7 +74,7 @@ export const QueryWorkspace = memo(function QueryWorkspace({
   )
 
   const runActiveQuery = useCallback((): void => {
-    if (!activeTab) return
+    if (!activeTab || activeTab.connectionId === null || activeTab.loading) return
     const selection = editorRef.current?.getSelectedQuery().trim()
     const sql = selection || editorRef.current?.getQuery() || ''
     if (sql.trim()) onRunQuery(activeTab.id, sql)
@@ -95,7 +95,7 @@ export const QueryWorkspace = memo(function QueryWorkspace({
         onAdd={onAddTab}
       />
 
-      {!activeTab || !connection ? (
+      {!activeTab ? (
         <Stack sx={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1.5, color: 'text.disabled' }}>
           <DataObjectRounded sx={{ fontSize: 28 }} />
           <Typography variant="body2">Open a query from a database or create a new tab.</Typography>
@@ -118,10 +118,11 @@ export const QueryWorkspace = memo(function QueryWorkspace({
                 connection={connection}
                 provider={provider}
                 database={activeTab.database}
-                databases={databasesByConnection[connection.id] ?? []}
-                schema={schemasByContext[connectionDatabaseKey(connection.id, activeTab.database)] ?? []}
+                databases={connection ? databasesByConnection[connection.id] ?? [] : []}
+                schema={connection ? schemasByContext[connectionDatabaseKey(connection.id, activeTab.database)] ?? [] : []}
                 initialQuery={queryForTab(activeTab.id)}
                 running={activeTab.running}
+                loading={activeTab.loading}
                 onDatabaseChange={changeActiveDatabase}
                 onQueryChange={onQueryChange}
                 onRun={runActiveQuery}
@@ -142,9 +143,18 @@ export const QueryWorkspace = memo(function QueryWorkspace({
             </Panel>
           </Group>
           <Stack component="footer" direction="row" sx={{ height: 25, flex: '0 0 auto', alignItems: 'center', gap: 1, px: 1.25, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}>
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', boxShadow: '0 0 0 3px rgba(141,221,138,.08)' }} />
-            <Typography variant="caption" color="text.secondary">Connected</Typography>
-            <Typography variant="caption" color="text.disabled">{activeTab.database ?? connection.name}</Typography>
+            {connection ? (
+              <>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', boxShadow: '0 0 0 3px rgba(141,221,138,.08)' }} />
+                <Typography variant="caption" color="text.secondary">Connected</Typography>
+                <Typography variant="caption" color="text.disabled">{activeTab.database ?? connection.name}</Typography>
+              </>
+            ) : (
+              <>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'text.disabled' }} />
+                <Typography variant="caption" color="text.secondary">Not connected</Typography>
+              </>
+            )}
             <Box sx={{ flex: 1 }} />
             <Typography variant="caption" color="text.disabled">{provider?.label}</Typography>
             <Typography variant="caption" color="text.disabled">UTF-8</Typography>

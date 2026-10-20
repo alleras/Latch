@@ -53,7 +53,8 @@ function App({ settings, onSettingsChange }: AppProps) {
     initialize: initializeWorkspace,
     openQuery,
     closeTabs,
-    closeTabsForConnection,
+    attachConnection,
+    releaseConnection,
     selectTab,
     updateDraft,
     queryForTab,
@@ -87,6 +88,29 @@ function App({ settings, onSettingsChange }: AppProps) {
     loadSchema
   })
   const tabConnection = connections.find((connection) => connection.id === activeTab?.connectionId) ?? null
+  // Async handlers and activation effects read the latest values through refs, never stale closures.
+  const activeTabRef = useRef(activeTab)
+  const explorerRef = useRef({ connection: explorerConnection, database: explorerDatabase })
+  activeTabRef.current = activeTab
+  explorerRef.current = { connection: explorerConnection, database: explorerDatabase }
+
+  /**
+   * A tab with no connection adopts one only on a user action: activation, a sidebar pick,
+   * or adding a connection. Returns true when the active tab took the connection.
+   */
+  const adoptIntoActiveTab = useCallback((connectionId: string, database?: string): boolean => {
+    const tab = activeTabRef.current
+    if (!tab || tab.connectionId !== null) return false
+    attachConnection(tab.id, connectionId, database)
+    return true
+  }, [attachConnection])
+
+  useEffect(() => {
+    // Activation trigger: keyed on the active tab only, so explorer changes alone never retarget a tab.
+    const explorer = explorerRef.current
+    if (!explorer.connection) return
+    adoptIntoActiveTab(explorer.connection.id, explorer.connection.provider === 'sqlite' ? undefined : explorer.database)
+  }, [activeTabId, adoptIntoActiveTab])
 
   useEffect(() => {
     if (!connectionsReady || initializedRef.current) return
@@ -129,9 +153,10 @@ function App({ settings, onSettingsChange }: AppProps) {
     const connection = await openSqlite(mode)
     if (!connection) return
     selectAddedConnection(connection.id)
-    openQuery(connection.id)
+    // A connectionless tab waiting for a target takes the new database instead of a fresh query tab.
+    if (!adoptIntoActiveTab(connection.id)) openQuery(connection.id)
     setConnectionDialogOpen(false)
-  }, [openQuery, openSqlite, selectAddedConnection])
+  }, [adoptIntoActiveTab, openQuery, openSqlite, selectAddedConnection])
 
   const addServerConnection = useCallback(async (input: ServerConnectionInput): Promise<void> => {
     setIsConnecting(true)
@@ -139,20 +164,31 @@ function App({ settings, onSettingsChange }: AppProps) {
     try {
       const connection = await addServer(input)
       selectAddedConnection(connection.id)
+      adoptIntoActiveTab(connection.id, connection.provider === 'sqlite' ? undefined : connection.initialDatabase)
       setConnectionDialogOpen(false)
     } catch (error) {
       setConnectionError(readableErrorMessage(error))
     } finally {
       setIsConnecting(false)
     }
-  }, [addServer, selectAddedConnection])
+  }, [addServer, adoptIntoActiveTab, selectAddedConnection])
 
   const removeConnection = useCallback(async (connectionId: string): Promise<void> => {
     const remaining = await removeManagedConnection(connectionId)
     evictConnection(connectionId)
-    closeTabsForConnection(connectionId)
+    releaseConnection(connectionId)
     handleConnectionRemoved(connectionId, remaining)
-  }, [closeTabsForConnection, evictConnection, handleConnectionRemoved, removeManagedConnection])
+  }, [evictConnection, handleConnectionRemoved, releaseConnection, removeManagedConnection])
+
+  const selectConnectionFromSidebar = useCallback((connectionId: string): void => {
+    selectExplorerConnection(connectionId)
+    adoptIntoActiveTab(connectionId)
+  }, [adoptIntoActiveTab, selectExplorerConnection])
+
+  const selectDatabaseFromSidebar = useCallback((connectionId: string, database: string): void => {
+    selectExplorerDatabase(connectionId, database)
+    adoptIntoActiveTab(connectionId, database)
+  }, [adoptIntoActiveTab, selectExplorerDatabase])
 
   const expandConnection = useCallback((connectionId: string): void => {
     const connection = connections.find((candidate) => candidate.id === connectionId)
@@ -198,10 +234,10 @@ function App({ settings, onSettingsChange }: AppProps) {
               loadingSchema={Boolean(explorerConnection && loadingSchemaKeys.has(connectionDatabaseKey(explorerConnection.id, explorerDatabase)))}
               schema={explorerSchema}
               onAdd={openConnectionDialog}
-              onSelectConnection={selectExplorerConnection}
+              onSelectConnection={selectConnectionFromSidebar}
               onRemoveConnection={removeConnection}
               onExpandConnection={expandConnection}
-              onSelectDatabase={selectExplorerDatabase}
+              onSelectDatabase={selectDatabaseFromSidebar}
               onOpenQuery={openQuery}
               onRefreshDatabases={refreshConnectionDatabases}
               onRefreshSchema={refreshActiveSchema}
@@ -211,7 +247,7 @@ function App({ settings, onSettingsChange }: AppProps) {
           <Separator className="resize-handle" />
 
           <Panel id="workspace" minSize={480}>
-            {connections.length === 0 ? (
+            {connections.length === 0 && tabs.length === 0 ? (
               <Stack sx={{ height: '100%', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at 50% 44%, rgba(201,245,95,.055), transparent 34%)' }}>
                 <Box sx={{ filter: 'drop-shadow(0 24px 40px rgba(0,0,0,.45))' }}><LatchMark size={62} /></Box>
                 <Typography variant="overline" color="primary.main" sx={{ mt: 3 }}>Your SQL workbench</Typography>

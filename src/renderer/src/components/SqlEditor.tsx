@@ -22,25 +22,29 @@ export interface SqlEditorHandle {
 interface SqlEditorProps {
   tabId: string
   openTabIds: string[]
-  connection: Connection
+  /** Null for a tab with no execution target; the editor still renders but cannot run. */
+  connection: Connection | null
   provider?: ProviderDefinition
   database?: string
   databases: string[]
   schema: DatabaseObject[]
   initialQuery: string
   running: boolean
+  /** True while a restored file tab's text is still being read; running and saving wait. */
+  loading: boolean
   onDatabaseChange: (database: string) => void
   onQueryChange: (tabId: string, query: string, unsaved: boolean) => void
   onRun: () => void
 }
 
 export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
-  { tabId, openTabIds, connection, provider, database, databases, schema, initialQuery, running, onDatabaseChange, onQueryChange, onRun },
+  { tabId, openTabIds, connection, provider, database, databases, schema, initialQuery, running, loading, onDatabaseChange, onQueryChange, onRun },
   ref
 ) {
   const muiTheme = useTheme()
-  const color = providerColor[connection.provider]
-  const language = sqlLanguageForProvider(connection.provider)
+  // The provider color is only rendered inside the connected branch below.
+  const color = connection ? providerColor[connection.provider] : 'transparent'
+  const language = connection ? sqlLanguageForProvider(connection.provider) : 'sql'
   const editorTheme = muiTheme.palette.mode === 'dark' ? 'latch-dark' : 'latch-light'
   const editorHostRef = useRef<HTMLDivElement>(null)
   const [databaseAnchor, setDatabaseAnchor] = useState<HTMLElement | null>(null)
@@ -59,7 +63,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     initialQuery,
     language,
     theme: editorTheme,
-    ariaLabel: `${provider?.label ?? connection.provider} SQL editor`,
+    ariaLabel: connection ? `${provider?.label ?? connection.provider} SQL editor` : 'SQL editor',
     schema,
     onQueryChange,
     onRun
@@ -89,7 +93,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   return (
     <Box sx={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'var(--latch-editor)' }}>
       <Stack direction="row" sx={{ minHeight: 42, alignItems: 'center', px: 1.25, borderBottom: '1px solid', borderColor: 'divider' }}>
-        {databases.length > 0 ? (
+        {connection === null ? (
+          <Chip label="No connection" variant="outlined" sx={{ height: 27, color: 'text.secondary' }} />
+        ) : databases.length > 0 ? (
           <>
             <Button
               aria-controls={databaseAnchor ? 'database-switcher' : undefined}
@@ -170,7 +176,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         )}
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption" color="text.disabled" sx={{ mr: 1, fontFamily: '"DM Mono"' }}>⌘ ↵</Typography>
-        <Button size="small" variant="contained" startIcon={<PlayArrowRounded />} onClick={onRun} loading={running}>Run query</Button>
+        <Button size="small" variant="contained" startIcon={<PlayArrowRounded />} onClick={onRun} loading={running} disabled={connection === null || loading}>Run query</Button>
       </Stack>
       <Box ref={editorHostRef} sx={{ minHeight: 0, flex: 1, overflow: 'hidden' }} />
     </Box>

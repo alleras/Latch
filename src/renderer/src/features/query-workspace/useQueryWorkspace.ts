@@ -3,6 +3,7 @@ import type { Connection } from '../../../../shared/types'
 import { mayChangeSchema } from '../../../../shared/sql'
 import type { SqlEditorHandle } from '../../components/SqlEditor'
 import { readableErrorMessage } from '../../errors'
+import { partitionTabsForRemovedConnection } from '../../query-files'
 import {
   tabIdsForCloseScope,
   updateQueryTab,
@@ -164,12 +165,25 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     })
   }, [])
 
-  const closeTabsForConnection = useCallback((connectionId: string): void => {
+  /** Gives a connectionless tab an execution target. Tabs that already have one are left alone. */
+  const attachConnection = useCallback((tabId: string, connectionId: string, database?: string): void => {
     setTabs((current) => {
-      const removedIds = new Set(current.filter((tab) => tab.connectionId === connectionId).map((tab) => tab.id))
-      removedIds.forEach((tabId) => draftsRef.current.delete(tabId))
-      const remaining = current.filter((tab) => !removedIds.has(tab.id))
-      setActiveTabId((currentId) => currentId && !removedIds.has(currentId) ? currentId : remaining[0]?.id ?? null)
+      const tab = current.find((candidate) => candidate.id === tabId)
+      if (!tab || tab.connectionId !== null) return current
+      return updateQueryTab(current, tabId, { connectionId, database, result: null, error: null })
+    })
+  }, [])
+
+  /** A removed connection closes its untitled tabs and detaches its file tabs, which keep their text. */
+  const releaseConnection = useCallback((connectionId: string): void => {
+    setTabs((current) => {
+      const { detach, close } = partitionTabsForRemovedConnection(current, connectionId)
+      if (detach.size === 0 && close.size === 0) return current
+      close.forEach((tabId) => draftsRef.current.delete(tabId))
+      const remaining = current
+        .filter((tab) => !close.has(tab.id))
+        .map((tab) => detach.has(tab.id) ? { ...tab, connectionId: null, database: undefined, result: null, error: null } : tab)
+      setActiveTabId((currentId) => currentId && !close.has(currentId) ? currentId : remaining[0]?.id ?? null)
       return remaining
     })
   }, [])
@@ -238,7 +252,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     initialize,
     openQuery,
     closeTabs,
-    closeTabsForConnection,
+    attachConnection,
+    releaseConnection,
     selectTab: setActiveTabId,
     updateDraft,
     queryForTab,

@@ -52,7 +52,7 @@ export const QueryTabs = memo(function QueryTabs({ tabs, connections, activeTabI
               key={tab.id}
               onClick={() => onSelect(tab.id)}
               onContextMenu={(event) => openContextMenu(event, tab.id)}
-              title={label}
+              title={tab.filePath ? `${label} — ${tab.filePath}` : label}
               sx={{
                 width: 240,
                 minWidth: 170,
@@ -70,12 +70,19 @@ export const QueryTabs = memo(function QueryTabs({ tabs, connections, activeTabI
                 cursor: 'default',
                 font: 'inherit',
                 '&:hover': { bgcolor: active ? 'var(--latch-active-tab)' : 'var(--latch-grid-hover)' },
-                '& .close-tab': { opacity: active ? 0.75 : 0 },
-                '&:hover .close-tab': { opacity: 0.75 }
+                // An unsaved file shows a dot where the close button sits; hovering swaps them.
+                '& .close-tab': { opacity: active ? 0.75 : 0, display: tab.unsaved ? 'none' : undefined },
+                '&:hover .close-tab': { opacity: 0.75, display: 'inline-flex' },
+                '&:hover .unsaved-dot': { display: 'none' }
               }}
             >
               <Box sx={{ width: 6, height: 6, flex: '0 0 auto', borderRadius: '50%', border: '1px solid', borderColor: tab.error ? 'error.main' : tab.running ? 'warning.main' : 'primary.main' }} />
               <Typography variant="caption" noWrap sx={{ flex: 1, textAlign: 'left', fontWeight: active ? 600 : 500 }}>{label}</Typography>
+              {tab.unsaved && (
+                <Box className="unsaved-dot" role="img" aria-label="Unsaved changes" sx={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: 'text.primary' }} />
+                </Box>
+              )}
               <IconButton
                 className="close-tab"
                 component="span"
