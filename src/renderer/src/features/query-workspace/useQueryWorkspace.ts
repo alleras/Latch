@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Connection } from '../../../../shared/types'
 import { mayChangeSchema } from '../../../../shared/sql'
+import type { SqlEditorHandle } from '../../components/SqlEditor'
 import { readableErrorMessage } from '../../errors'
 import {
   tabIdsForCloseScope,
@@ -34,6 +35,8 @@ interface UseQueryWorkspaceOptions {
 export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions) {
   const [tabs, setTabs] = useState<QueryTabState[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  /** The mounted SQL editor. Owned here so save and reload workflows can update Monaco models. */
+  const editorRef = useRef<SqlEditorHandle | null>(null)
   const tabsRef = useRef(tabs)
   const activeTabIdRef = useRef(activeTabId)
   const draftsRef = useRef(new Map<string, string>())
@@ -175,8 +178,15 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     if (activeTabIdRef.current) closeTabs(activeTabIdRef.current)
   }), [closeTabs])
 
-  const updateDraft = useCallback((tabId: string, query: string): void => {
+  const updateDraft = useCallback((tabId: string, query: string, unsaved: boolean): void => {
     draftsRef.current.set(tabId, query)
+    setTabs((current) => {
+      const tab = current.find((candidate) => candidate.id === tabId)
+      // Only file tabs carry an unsaved marker, and the tab list only rerenders when it flips.
+      const nextUnsaved = unsaved && tab?.filePath !== undefined
+      if (!tab || tab.unsaved === nextUnsaved) return current
+      return updateQueryTab(current, tabId, { unsaved: nextUnsaved })
+    })
     schedulePersist()
   }, [schedulePersist])
 
@@ -224,6 +234,7 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     tabs,
     activeTabId,
     activeTab: tabs.find((tab) => tab.id === activeTabId) ?? null,
+    editorRef,
     initialize,
     openQuery,
     closeTabs,

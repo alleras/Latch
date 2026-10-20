@@ -13,6 +13,10 @@ export interface SqlEditorHandle {
   focus: () => void
   getQuery: () => string
   getSelectedQuery: () => string
+  /** Makes the tab's current text the unsaved baseline. */
+  markSaved: (tabId: string) => void
+  /** Replaces the tab's text silently and marks it saved. */
+  replaceQuery: (tabId: string, query: string) => void
 }
 
 interface SqlEditorProps {
@@ -26,7 +30,7 @@ interface SqlEditorProps {
   initialQuery: string
   running: boolean
   onDatabaseChange: (database: string) => void
-  onQueryChange: (tabId: string, query: string) => void
+  onQueryChange: (tabId: string, query: string, unsaved: boolean) => void
   onRun: () => void
 }
 

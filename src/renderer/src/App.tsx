@@ -49,6 +49,7 @@ function App({ settings, onSettingsChange }: AppProps) {
     tabs,
     activeTabId,
     activeTab,
+    editorRef,
     initialize: initializeWorkspace,
     openQuery,
     closeTabs,
@@ -222,6 +223,7 @@ function App({ settings, onSettingsChange }: AppProps) {
               <QueryWorkspace
                 tabs={tabs}
                 activeTabId={activeTabId}
+                editorRef={editorRef}
                 connections={connections}
                 providers={providers}
                 databasesByConnection={databasesByConnection}

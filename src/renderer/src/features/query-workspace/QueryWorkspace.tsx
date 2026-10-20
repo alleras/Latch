@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useMemo, useRef } from 'react'
+import { memo, useCallback, useDeferredValue, useMemo, type RefObject } from 'react'
 import DataObjectRounded from '@mui/icons-material/DataObjectRounded'
 import { Box, Button, Stack, Typography } from '@mui/material'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
@@ -11,6 +11,8 @@ import { connectionDatabaseKey, type CloseTabScope, type QueryTabState } from '.
 interface QueryWorkspaceProps {
   tabs: QueryTabState[]
   activeTabId: string | null
+  /** Owned by the query workspace controller so save workflows can reach the editor. */
+  editorRef: RefObject<SqlEditorHandle | null>
   connections: Connection[]
   providers: ProviderDefinition[]
   databasesByConnection: Record<string, string[]>
@@ -19,7 +21,7 @@ interface QueryWorkspaceProps {
   onCloseTabs: (tabId: string, scope?: CloseTabScope) => void
   onAddTab: () => void
   onDatabaseChange: (tabId: string, database: string) => void
-  onQueryChange: (tabId: string, query: string) => void
+  onQueryChange: (tabId: string, query: string, unsaved: boolean) => void
   queryForTab: (tabId: string) => string
   onRunQuery: (tabId: string, sql: string) => void
   onClearResults: (tabId: string) => void
@@ -46,6 +48,7 @@ const TabResultsPanel = memo(function TabResultsPanel({ tab, active, onClearResu
 export const QueryWorkspace = memo(function QueryWorkspace({
   tabs,
   activeTabId,
+  editorRef,
   connections,
   providers,
   databasesByConnection,
@@ -59,7 +62,6 @@ export const QueryWorkspace = memo(function QueryWorkspace({
   onRunQuery,
   onClearResults
 }: QueryWorkspaceProps) {
-  const editorRef = useRef<SqlEditorHandle>(null)
   const queryLayout = useDefaultLayout({ id: 'query-panels', storage: localStorage })
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
   const connection = connections.find((item) => item.id === activeTab?.connectionId) ?? null

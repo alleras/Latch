@@ -11,7 +11,8 @@ interface UseMonacoWorkspaceOptions {
   theme: string
   ariaLabel: string
   schema: DatabaseObject[]
-  onQueryChange: (tabId: string, query: string) => void
+  /** `unsaved` is true when the model differs from the text last marked saved. O(1) via version ids. */
+  onQueryChange: (tabId: string, query: string, unsaved: boolean) => void
   onRun: () => void
 }
 
@@ -37,6 +38,9 @@ export function useMonacoWorkspace({
   const activeTabIdRef = useRef(tabId)
   const modelsRef = useRef(new Map<string, MonacoModelEntry>())
   const viewStatesRef = useRef(new Map<string, monaco.editor.ICodeEditorViewState>())
+  /** Alternative version id of each model at its last open or save; the unsaved baseline. */
+  const savedVersionIdsRef = useRef(new Map<string, number>())
+  const replacingRef = useRef(false)
   const onRunRef = useRef(onRun)
   const onQueryChangeRef = useRef(onQueryChange)
   const schemaRef = useRef(schema)
@@ -94,6 +98,7 @@ export function useMonacoWorkspace({
       }
       modelsRef.current.clear()
       viewStatesRef.current.clear()
+      savedVersionIdsRef.current.clear()
       editorRef.current = null
       activeModelRef.current = null
     }
@@ -113,7 +118,12 @@ export function useMonacoWorkspace({
     if (!entry) {
       const uri = monaco.Uri.parse(`inmemory://latch/query/${encodeURIComponent(tabId)}.sql`)
       const model = monaco.editor.createModel(initialQuery, language, uri)
-      const subscription = model.onDidChangeContent(() => onQueryChangeRef.current(tabId, model.getValue()))
+      savedVersionIdsRef.current.set(tabId, model.getAlternativeVersionId())
+      const subscription = model.onDidChangeContent(() => {
+        if (replacingRef.current) return
+        const unsaved = model.getAlternativeVersionId() !== savedVersionIdsRef.current.get(tabId)
+        onQueryChangeRef.current(tabId, model.getValue(), unsaved)
+      })
       entry = { model, subscription }
       modelsRef.current.set(tabId, entry)
     } else if (entry.model.getLanguageId() !== language) {
@@ -136,6 +146,7 @@ export function useMonacoWorkspace({
       entry.model.dispose()
       modelsRef.current.delete(id)
       viewStatesRef.current.delete(id)
+      savedVersionIdsRef.current.delete(id)
     }
   }, [openTabIds])
 
@@ -150,5 +161,27 @@ export function useMonacoWorkspace({
     return model && selection ? model.getValueInRange(selection) : ''
   }, [])
 
-  return { focus, getQuery, getSelectedQuery }
+  /** Makes the model's current text the unsaved baseline. No-op for a tab without a model yet. */
+  const markSaved = useCallback((targetTabId: string): void => {
+    const entry = modelsRef.current.get(targetTabId)
+    if (entry) savedVersionIdsRef.current.set(targetTabId, entry.model.getAlternativeVersionId())
+  }, [])
+
+  /**
+   * Replaces a model's text without reporting a change, then marks it saved.
+   * A tab without a model is left alone; its model is created later from the draft.
+   */
+  const replaceQuery = useCallback((targetTabId: string, query: string): void => {
+    const entry = modelsRef.current.get(targetTabId)
+    if (!entry) return
+    replacingRef.current = true
+    try {
+      entry.model.setValue(query)
+    } finally {
+      replacingRef.current = false
+    }
+    savedVersionIdsRef.current.set(targetTabId, entry.model.getAlternativeVersionId())
+  }, [])
+
+  return { focus, getQuery, getSelectedQuery, markSaved, replaceQuery }
 }
