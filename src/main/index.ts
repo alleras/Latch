@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
+import { flushDraftBackups } from './draft-backups'
 import { registerIpc } from './ipc'
 import { installApplicationMenu } from './menu'
 import { closeAllProviderConnections } from './providers'
@@ -68,9 +69,11 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   if (closingSessions) return
   closingSessions = true
-  void closeAllProviderConnections()
-    .catch((error: unknown) => console.error('Failed to close database sessions.', error))
-    .finally(() => {
+  // Unsaved-edit backups still being written must land before the process exits.
+  void Promise.all([
+    closeAllProviderConnections().catch((error: unknown) => console.error('Failed to close database sessions.', error)),
+    flushDraftBackups()
+  ]).finally(() => {
       sessionsClosed = true
       app.quit()
     })

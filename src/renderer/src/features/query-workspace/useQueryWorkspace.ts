@@ -2,8 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Connection, SqlFile } from '../../../../shared/types'
 import { mayChangeSchema } from '../../../../shared/sql'
 import type { SqlEditorHandle } from '../../components/SqlEditor'
+import { createActivationGuard } from '../../activation-guard'
 import { readableErrorMessage } from '../../errors'
-import { defaultSavePath, fileTitle, findTabForPath, partitionTabsForRemovedConnection, unsavedFileTabs } from '../../query-files'
+import {
+  defaultSavePath,
+  fileTitle,
+  findTabForPath,
+  partitionTabsForRemovedConnection,
+  saveLeavesTabClean,
+  unsavedFileTabs
+} from '../../query-files'
 import {
   tabIdsForCloseScope,
   updateQueryTab,
@@ -49,6 +57,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
    * so version ids cannot tell when an edit returns to the saved state; they stay unsaved until saved.
    */
   const unknownBaselineRef = useRef(new Set<string>())
+  /** Lets the shell tell user-caused tab activations (which may adopt a connection) from app-caused ones. */
+  const activationGuardRef = useRef(createActivationGuard())
   /** The mounted SQL editor. Owned here so save and reload workflows can update Monaco models. */
   const editorRef = useRef<SqlEditorHandle | null>(null)
   const tabsRef = useRef(tabs)
@@ -141,6 +151,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     queryNumberRef.current = Math.max(restored.nextQueryNumber, restoredTabs.length > 0 ? 2 : 1)
     tabsRef.current = restoredTabs
     activeTabIdRef.current = restoredActiveTabId
+    // Restoring the active tab at launch is not a user action; a connectionless tab stays that way.
+    if (restoredActiveTabId) activationGuardRef.current.suppress(restoredActiveTabId)
     initializedRef.current = true
     setTabs(restoredTabs)
     setActiveTabId(restoredActiveTabId)
@@ -158,9 +170,9 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
 
   useEffect(() => {
     const flush = (): void => {
-      // A backup still waiting on its timer must land before the window goes away, so write it synchronously.
+      // Every unsaved file tab is written synchronously so nothing depends on an async write finishing first.
       for (const tab of tabsRef.current) {
-        if (tab.filePath === undefined || !tab.unsaved || !backupTimersRef.current.has(tab.id)) continue
+        if (tab.filePath === undefined || !tab.unsaved) continue
         cancelBackup(tab.id)
         const draft = draftsRef.current.get(tab.id)
         if (draft !== undefined) window.latch.writeDraftBackupSync(tab.id, draft)
@@ -193,6 +205,9 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     setActiveTabId(id)
   }, [])
 
+  /** For the shell's activation trigger: true only for activations the user caused. Consumes one suppression. */
+  const adoptionAllowedForActivation = useCallback((tabId: string | null): boolean => activationGuardRef.current.shouldAdopt(tabId), [])
+
   const showNotice = useCallback((message: string): void => setNotice(message), [])
   const dismissNotice = useCallback((): void => setNotice(null), [])
 
@@ -203,7 +218,7 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
   const openFiles = useCallback((files: SqlFile[], connectionId: string | null, database?: string): void => {
     const openedThisBatch = new Map<string, string>()
     for (const file of files) {
-      const existingId = openedThisBatch.get(file.path) ?? findTabForPath(tabsRef.current, file.path)?.id
+      const existingId = openedThisBatch.get(file.path) ?? findTabForPath(tabsRef.current, file.path, window.latch.platform)?.id
       if (existingId) {
         setActiveTabId(existingId)
         continue
@@ -232,7 +247,7 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
    * Removes tabs along with their drafts and any unsaved-edit backups. When the active tab is
    * among them, the tab at `anchorIndex` in the remaining list becomes active.
    */
-  const removeTabs = useCallback((ids: Set<string>, anchorIndex = 0): void => {
+  const removeTabs = useCallback((ids: Set<string>, anchorIndex = 0, userInitiated = true): void => {
     if (ids.size === 0) return
     ids.forEach((id) => {
       draftsRef.current.delete(id)
@@ -244,19 +259,32 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
       const remaining = current.filter((tab) => !ids.has(tab.id))
       setActiveTabId((currentId) => {
         if (currentId && !ids.has(currentId)) return currentId
-        return remaining[Math.min(Math.max(anchorIndex, 0), remaining.length - 1)]?.id ?? null
+        const nextId = remaining[Math.min(Math.max(anchorIndex, 0), remaining.length - 1)]?.id ?? null
+        if (!userInitiated && nextId) activationGuardRef.current.suppress(nextId)
+        return nextId
       })
       return remaining
     })
   }, [cancelBackup])
 
-  /** After a successful write the tab's text is the saved text again: no backup, no unknown baseline. */
-  const markTabSaved = useCallback(async (tabId: string): Promise<void> => {
-    editorRef.current?.markSaved(tabId)
+  /**
+   * After a write, the version captured when the save started is the saved baseline. The tab is clean
+   * only if nothing was typed during the write; otherwise it stays unsaved and keeps its backup.
+   * Returns whether the tab is clean.
+   */
+  const markTabSaved = useCallback(async (tabId: string, capturedVersion: number | null): Promise<boolean> => {
+    const clean = saveLeavesTabClean(capturedVersion, editorRef.current?.getVersionId(tabId) ?? null)
+    editorRef.current?.markSaved(tabId, capturedVersion ?? undefined)
     unknownBaselineRef.current.delete(tabId)
-    cancelBackup(tabId)
-    await window.latch.deleteDraftBackup(tabId).catch(() => undefined)
-  }, [cancelBackup])
+    setTabs((current) => updateQueryTab(current, tabId, { unsaved: !clean }))
+    if (clean) {
+      cancelBackup(tabId)
+      await window.latch.deleteDraftBackup(tabId).catch(() => undefined)
+    } else {
+      scheduleBackup(tabId)
+    }
+    return clean
+  }, [cancelBackup, scheduleBackup])
 
   const saveTabAs = useCallback(async (tabId: string): Promise<boolean> => {
     const tab = tabsRef.current.find((candidate) => candidate.id === tabId)
@@ -264,29 +292,35 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     try {
       const path = await window.latch.chooseSqlFilePath(defaultSavePath(tab))
       if (!path) return false
-      await window.latch.writeSqlFile(path, draftsRef.current.get(tabId) ?? '')
+      // Capture text and version together, before the write, so typing during the write stays unsaved.
+      const draft = draftsRef.current.get(tabId) ?? ''
+      const capturedVersion = editorRef.current?.getVersionId(tabId) ?? null
+      await window.latch.writeSqlFile(path, draft)
       // Two tabs never share a path: the file now holds what was just saved, so the other tab goes.
-      const duplicate = findTabForPath(tabsRef.current, path)
+      const duplicate = findTabForPath(tabsRef.current, path, window.latch.platform)
       if (duplicate && duplicate.id !== tabId) removeTabs(new Set([duplicate.id]))
-      setTabs((current) => updateQueryTab(current, tabId, { filePath: path, title: fileTitle(path), unsaved: false }))
-      await markTabSaved(tabId)
-      return true
+      setTabs((current) => updateQueryTab(current, tabId, { filePath: path, title: fileTitle(path) }))
+      return await markTabSaved(tabId, capturedVersion)
     } catch (error) {
       showNotice(readableErrorMessage(error))
       return false
     }
   }, [markTabSaved, removeTabs, showNotice])
 
-  /** Writes a file tab back to disk. An untitled tab asks for a location first. */
+  /**
+   * Writes a file tab back to disk. An untitled tab asks for a location first. Resolves to whether the
+   * tab is clean afterwards: false when cancelled, when the write failed, or when the user kept typing
+   * during the write (the file holds the earlier text and the tab stays unsaved).
+   */
   const saveTab = useCallback(async (tabId: string): Promise<boolean> => {
     const tab = tabsRef.current.find((candidate) => candidate.id === tabId)
     if (!tab || tab.loading) return false
     if (tab.filePath === undefined) return saveTabAs(tabId)
     try {
-      await window.latch.writeSqlFile(tab.filePath, draftsRef.current.get(tabId) ?? '')
-      setTabs((current) => updateQueryTab(current, tabId, { unsaved: false }))
-      await markTabSaved(tabId)
-      return true
+      const draft = draftsRef.current.get(tabId) ?? ''
+      const capturedVersion = editorRef.current?.getVersionId(tabId) ?? null
+      await window.latch.writeSqlFile(tab.filePath, draft)
+      return await markTabSaved(tabId, capturedVersion)
     } catch (error) {
       showNotice(readableErrorMessage(error))
       return false
@@ -305,7 +339,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
         try {
           let text: string | null = null
           if (unsaved) {
-            text = await window.latch.readDraftBackup(id)
+            // Any failure to read the backup counts as a missing backup; the file itself may be fine.
+            text = await window.latch.readDraftBackup(id).catch(() => null)
             if (text !== null) unknownBaselineRef.current.add(id)
             else showNotice(`Unsaved edits for ${title} could not be recovered.`)
           }
@@ -315,7 +350,7 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
           editorRef.current?.replaceQuery(id, text)
           setTabs((current) => updateQueryTab(current, id, { loading: false, unsaved: unknownBaselineRef.current.has(id) }))
         } catch (error) {
-          removeTabs(new Set([id]))
+          removeTabs(new Set([id]), 0, false)
           showNotice(`${title} could not be reopened: ${readableErrorMessage(error)}`)
         }
       })()
@@ -399,7 +434,13 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
       const remaining = current
         .filter((tab) => !close.has(tab.id))
         .map((tab) => detach.has(tab.id) ? { ...tab, connectionId: null, database: undefined, result: null, error: null } : tab)
-      setActiveTabId((currentId) => currentId && !close.has(currentId) ? currentId : remaining[0]?.id ?? null)
+      setActiveTabId((currentId) => {
+        if (currentId && !close.has(currentId)) return currentId
+        const nextId = remaining[0]?.id ?? null
+        // An activation caused by the removal is not a user action; the next tab must not retarget.
+        if (nextId) activationGuardRef.current.suppress(nextId)
+        return nextId
+      })
       return remaining
     })
   }, [])
@@ -483,6 +524,7 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     requestCloseTabs,
     closePrompt,
     answerClosePrompt,
+    adoptionAllowedForActivation,
     attachConnection,
     releaseConnection,
     selectTab: setActiveTabId,

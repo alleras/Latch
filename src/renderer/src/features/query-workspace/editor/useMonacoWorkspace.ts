@@ -161,10 +161,18 @@ export function useMonacoWorkspace({
     return model && selection ? model.getValueInRange(selection) : ''
   }, [])
 
-  /** Makes the model's current text the unsaved baseline. No-op for a tab without a model yet. */
-  const markSaved = useCallback((targetTabId: string): void => {
+  /** The model's current alternative version id, or null for a tab without a model yet. */
+  const getVersionId = useCallback((targetTabId: string): number | null => {
+    return modelsRef.current.get(targetTabId)?.model.getAlternativeVersionId() ?? null
+  }, [])
+
+  /**
+   * Makes a version of the model the unsaved baseline: the given one (captured when a save started,
+   * so keystrokes typed during the write stay unsaved) or the current one. No-op without a model.
+   */
+  const markSaved = useCallback((targetTabId: string, versionId?: number): void => {
     const entry = modelsRef.current.get(targetTabId)
-    if (entry) savedVersionIdsRef.current.set(targetTabId, entry.model.getAlternativeVersionId())
+    if (entry) savedVersionIdsRef.current.set(targetTabId, versionId ?? entry.model.getAlternativeVersionId())
   }, [])
 
   /**
@@ -183,5 +191,5 @@ export function useMonacoWorkspace({
     savedVersionIdsRef.current.set(targetTabId, entry.model.getAlternativeVersionId())
   }, [])
 
-  return { focus, getQuery, getSelectedQuery, markSaved, replaceQuery }
+  return { focus, getQuery, getSelectedQuery, getVersionId, markSaved, replaceQuery }
 }

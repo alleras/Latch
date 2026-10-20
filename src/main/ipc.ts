@@ -1,5 +1,5 @@
 import { app, clipboard, dialog, ipcMain } from 'electron'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { ServerConnectionInput } from '../shared/types'
 import {
@@ -51,7 +51,7 @@ function registerFileIpc(): void {
       defaultPath: requireText(defaultPath, 'Default path must be text.'),
       filters: [SQL_FILE_FILTERS[0]]
     })
-    return result.canceled || !result.filePath ? null : result.filePath
+    return result.canceled || !result.filePath ? null : resolve(result.filePath)
   })
 
   ipcMain.handle('drafts:write', (_event, tabId: unknown, content: unknown) => writeDraftBackup(

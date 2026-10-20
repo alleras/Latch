@@ -6,6 +6,8 @@ import {
   fileTitle,
   findTabForPath,
   partitionTabsForRemovedConnection,
+  pathsEqual,
+  saveLeavesTabClean,
   unsavedFileTabs
 } from '../src/renderer/src/query-files.ts'
 
@@ -33,11 +35,26 @@ test('defaultSavePath prefers the bound path, else <title>.sql', () => {
   assert.equal(defaultSavePath(tab({ id: 'b', title: 'Query 3' })), 'Query 3.sql')
 })
 
-test('findTabForPath matches exactly', () => {
+test('pathsEqual ignores case only on Windows', () => {
+  assert.equal(pathsEqual('C:\\Q\\Daily.sql', 'c:\\q\\daily.sql', 'win32'), true)
+  assert.equal(pathsEqual('/q/Daily.sql', '/q/daily.sql', 'linux'), false)
+  assert.equal(pathsEqual('/q/Daily.sql', '/q/daily.sql', 'darwin'), false)
+  assert.equal(pathsEqual('/q/daily.sql', '/q/daily.sql', 'linux'), true)
+})
+
+test('findTabForPath matches exactly on Linux and case-insensitively on Windows', () => {
   const tabs = [tab({ id: 'a', filePath: 'C:\\a.sql' }), tab({ id: 'b', filePath: 'C:\\b.sql' }), tab({ id: 'c' })]
-  assert.equal(findTabForPath(tabs, 'C:\\b.sql')?.id, 'b')
-  assert.equal(findTabForPath(tabs, 'C:\\B.sql'), undefined)
-  assert.equal(findTabForPath(tabs, 'C:\\missing.sql'), undefined)
+  assert.equal(findTabForPath(tabs, 'C:\\b.sql', 'linux')?.id, 'b')
+  assert.equal(findTabForPath(tabs, 'C:\\B.sql', 'linux'), undefined)
+  assert.equal(findTabForPath(tabs, 'C:\\B.sql', 'win32')?.id, 'b')
+  assert.equal(findTabForPath(tabs, 'C:\\missing.sql', 'win32'), undefined)
+})
+
+test('saveLeavesTabClean compares the version captured before the write with the current one', () => {
+  assert.equal(saveLeavesTabClean(7, 7), true)
+  assert.equal(saveLeavesTabClean(7, 9), false)
+  assert.equal(saveLeavesTabClean(null, null), true)
+  assert.equal(saveLeavesTabClean(null, 3), true)
 })
 
 test('unsavedFileTabs keeps tab order and ignores untitled and saved tabs', () => {

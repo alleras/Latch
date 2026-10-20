@@ -120,6 +120,8 @@ export interface SqlFile {
 }
 
 export interface LatchApi {
+  /** The main process's `process.platform`, for platform-specific rules such as path case. */
+  platform: string
   listProviders: () => Promise<ProviderDefinition[]>
   listConnections: () => Promise<Connection[]>
   openDatabase: () => Promise<Connection | null>

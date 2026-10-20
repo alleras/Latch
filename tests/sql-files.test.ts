@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, join, sep } from 'node:path'
 import { readSqlFile, sqlFileName, stripBom, writeSqlFile } from '../src/main/sql-files.ts'
 
 let directory = ''
@@ -47,6 +47,14 @@ test('writeSqlFile writes UTF-8 without a BOM and preserves CRLF', async () => {
   const bytes = await readFile(path)
   assert.notEqual(bytes[0], 0xef)
   assert.equal(bytes.toString('utf8'), 'SELECT 1;\r\nSELECT 2;')
+})
+
+test('readSqlFile returns an absolute, normalized path', async () => {
+  // Built by hand because path.join would normalize the ".." away before the call.
+  const path = [directory, 'nested', '..', 'normalized.sql'].join(sep)
+  await writeFile(join(directory, 'normalized.sql'), 'SELECT 1', 'utf8')
+  const file = await readSqlFile(path)
+  assert.equal(file.path, join(directory, 'normalized.sql'))
 })
 
 test('readSqlFile rejects for a missing file', async () => {

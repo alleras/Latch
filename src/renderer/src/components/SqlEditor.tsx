@@ -13,8 +13,10 @@ export interface SqlEditorHandle {
   focus: () => void
   getQuery: () => string
   getSelectedQuery: () => string
-  /** Makes the tab's current text the unsaved baseline. */
-  markSaved: (tabId: string) => void
+  /** The tab's current Monaco version id, or null when it has no model yet. */
+  getVersionId: (tabId: string) => number | null
+  /** Makes a version of the tab's text the unsaved baseline: the given one, or the current one. */
+  markSaved: (tabId: string, versionId?: number) => void
   /** Replaces the tab's text silently and marks it saved. */
   replaceQuery: (tabId: string, query: string) => void
 }

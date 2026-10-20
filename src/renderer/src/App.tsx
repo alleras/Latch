@@ -63,6 +63,7 @@ function App({ settings, onSettingsChange }: AppProps) {
     requestCloseTabs,
     closePrompt,
     answerClosePrompt,
+    adoptionAllowedForActivation,
     attachConnection,
     releaseConnection,
     selectTab,
@@ -116,11 +117,13 @@ function App({ settings, onSettingsChange }: AppProps) {
   }, [attachConnection])
 
   useEffect(() => {
-    // Activation trigger: keyed on the active tab only, so explorer changes alone never retarget a tab.
+    // Activation trigger: keyed on the active tab only, so explorer changes alone never retarget a tab,
+    // and activations the app made itself (launch restore, connection removal, failed reloads) are skipped.
+    if (!adoptionAllowedForActivation(activeTabId)) return
     const explorer = explorerRef.current
     if (!explorer.connection) return
     adoptIntoActiveTab(explorer.connection.id, explorer.connection.provider === 'sqlite' ? undefined : explorer.database)
-  }, [activeTabId, adoptIntoActiveTab])
+  }, [activeTabId, adoptIntoActiveTab, adoptionAllowedForActivation])
 
   useEffect(() => {
     if (!connectionsReady || initializedRef.current) return

@@ -10,8 +10,22 @@ export function defaultSavePath(tab: QueryTabState): string {
   return tab.filePath ?? `${tab.title}.sql`
 }
 
-export function findTabForPath(tabs: QueryTabState[], path: string): QueryTabState | undefined {
-  return tabs.find((tab) => tab.filePath === path)
+/** Windows paths name the same file regardless of case; other platforms compare exactly. */
+export function pathsEqual(a: string, b: string, platform: string): boolean {
+  return platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+}
+
+export function findTabForPath(tabs: QueryTabState[], path: string, platform: string): QueryTabState | undefined {
+  return tabs.find((tab) => tab.filePath !== undefined && pathsEqual(tab.filePath, path, platform))
+}
+
+/**
+ * A save writes the text captured when it started. The tab is clean afterwards only if nothing was
+ * typed meanwhile, i.e. the model's version is still the captured one. A tab without a model (not
+ * active, so nothing could be typed) counts as clean.
+ */
+export function saveLeavesTabClean(capturedVersion: number | null, currentVersion: number | null): boolean {
+  return capturedVersion === null || capturedVersion === currentVersion
 }
 
 /** File tabs with unsaved edits among `ids`, in tab order. Untitled tabs never qualify. */

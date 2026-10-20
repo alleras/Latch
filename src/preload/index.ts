@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { LatchApi, MenuCommand } from '../shared/types'
 
 const api: LatchApi = {
+  platform: process.platform,
   openSqlFiles: () => ipcRenderer.invoke('files:open-sql'),
   readSqlFile: (path) => ipcRenderer.invoke('files:read-sql', path),
   writeSqlFile: (path, content) => ipcRenderer.invoke('files:write-sql', path, content),
