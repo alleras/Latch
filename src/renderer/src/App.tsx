@@ -3,9 +3,9 @@ import AddRounded from '@mui/icons-material/AddRounded'
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
 import StorageRounded from '@mui/icons-material/StorageRounded'
-import { Box, Button, IconButton, Stack, Tooltip, Typography } from '@mui/material'
+import { Box, Button, IconButton, Snackbar, Stack, Tooltip, Typography } from '@mui/material'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
-import type { ServerConnectionInput } from '../../shared/types'
+import type { MenuCommand, ServerConnectionInput } from '../../shared/types'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { LatchMark } from './components/LatchMark'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -50,8 +50,12 @@ function App({ settings, onSettingsChange }: AppProps) {
     activeTabId,
     activeTab,
     editorRef,
+    notice,
+    showNotice,
+    dismissNotice,
     initialize: initializeWorkspace,
     openQuery,
+    openFiles,
     closeTabs,
     attachConnection,
     releaseConnection,
@@ -148,6 +152,34 @@ function App({ settings, onSettingsChange }: AppProps) {
     }
     openQuery(explorerConnection.id, explorerConnection.provider === 'sqlite' ? undefined : explorerDatabase)
   }, [explorerConnection, explorerDatabase, openConnectionDialog, openQuery])
+
+  const openFilesFromDialog = useCallback(async (): Promise<void> => {
+    try {
+      const files = await window.latch.openSqlFiles()
+      if (files.length === 0) return
+      // New file tabs target whatever the explorer shows now, exactly like New Query.
+      const explorer = explorerRef.current
+      openFiles(files, explorer.connection?.id ?? null, explorer.connection?.provider === 'sqlite' ? undefined : explorer.database)
+    } catch (error) {
+      showNotice(readableErrorMessage(error))
+    }
+  }, [openFiles, showNotice])
+
+  const handleMenuCommand = useCallback((command: MenuCommand): void => {
+    switch (command) {
+      case 'new-query':
+        addQueryFromExplorer()
+        break
+      case 'open-file':
+        void openFilesFromDialog()
+        break
+      case 'save':
+      case 'save-as':
+        break
+    }
+  }, [addQueryFromExplorer, openFilesFromDialog])
+
+  useEffect(() => window.latch.onMenuCommand(handleMenuCommand), [handleMenuCommand])
 
   const addSqlite = useCallback(async (mode: 'open' | 'create'): Promise<void> => {
     const connection = await openSqlite(mode)
@@ -293,6 +325,13 @@ function App({ settings, onSettingsChange }: AppProps) {
         settings={settings}
         onClose={() => setSettingsDialogOpen(false)}
         onSave={onSettingsChange}
+      />
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={6000}
+        onClose={dismissNotice}
+        message={notice}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>
   )

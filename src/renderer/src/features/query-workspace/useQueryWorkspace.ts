@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Connection } from '../../../../shared/types'
+import type { Connection, SqlFile } from '../../../../shared/types'
 import { mayChangeSchema } from '../../../../shared/sql'
 import type { SqlEditorHandle } from '../../components/SqlEditor'
 import { readableErrorMessage } from '../../errors'
-import { partitionTabsForRemovedConnection } from '../../query-files'
+import { fileTitle, findTabForPath, partitionTabsForRemovedConnection } from '../../query-files'
 import {
   tabIdsForCloseScope,
   updateQueryTab,
@@ -36,6 +36,8 @@ interface UseQueryWorkspaceOptions {
 export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions) {
   const [tabs, setTabs] = useState<QueryTabState[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  /** A dismissable message about a file operation; query errors use the per-tab error area instead. */
+  const [notice, setNotice] = useState<string | null>(null)
   /** The mounted SQL editor. Owned here so save and reload workflows can update Monaco models. */
   const editorRef = useRef<SqlEditorHandle | null>(null)
   const tabsRef = useRef(tabs)
@@ -151,6 +153,41 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     setActiveTabId(id)
   }, [])
 
+  const showNotice = useCallback((message: string): void => setNotice(message), [])
+  const dismissNotice = useCallback((): void => setNotice(null), [])
+
+  /**
+   * Opens files into tabs. A file that is already open is activated rather than reopened,
+   * so two tabs never share a path. The last file processed ends up active.
+   */
+  const openFiles = useCallback((files: SqlFile[], connectionId: string | null, database?: string): void => {
+    const openedThisBatch = new Map<string, string>()
+    for (const file of files) {
+      const existingId = openedThisBatch.get(file.path) ?? findTabForPath(tabsRef.current, file.path)?.id
+      if (existingId) {
+        setActiveTabId(existingId)
+        continue
+      }
+      const id = crypto.randomUUID()
+      const tab: QueryTabState = {
+        id,
+        title: fileTitle(file.path),
+        connectionId,
+        database,
+        filePath: file.path,
+        unsaved: false,
+        loading: false,
+        result: null,
+        error: null,
+        running: false
+      }
+      draftsRef.current.set(id, file.content)
+      openedThisBatch.set(file.path, id)
+      setTabs((current) => [...current, tab])
+      setActiveTabId(id)
+    }
+  }, [])
+
   const closeTabs = useCallback((tabId: string, scope: CloseTabScope = 'tab'): void => {
     setTabs((current) => {
       const index = current.findIndex((tab) => tab.id === tabId)
@@ -249,8 +286,12 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     activeTabId,
     activeTab: tabs.find((tab) => tab.id === activeTabId) ?? null,
     editorRef,
+    notice,
+    showNotice,
+    dismissNotice,
     initialize,
     openQuery,
+    openFiles,
     closeTabs,
     attachConnection,
     releaseConnection,
