@@ -21,7 +21,7 @@ export const QueryTabs = memo(function QueryTabs({ tabs, connections, activeTabI
     const connection = connections.find((item) => item.id === tab.connectionId)
     const context = connection
       ? `${connection.name}${tab.database ? ` / ${tab.database}` : ''}`
-      : 'Missing connection'
+      : tab.connectionId === null ? 'No connection' : 'Missing connection'
     return `${tab.title} — ${context}`
   }
 

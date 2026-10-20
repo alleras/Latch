@@ -3,8 +3,15 @@ import type { QueryResult } from '../../shared/types'
 export interface QueryTabState {
   id: string
   title: string
-  connectionId: string
+  /** Null for a tab that has no execution target yet; such tabs cannot run. */
+  connectionId: string | null
   database?: string
+  /** Present on tabs bound to a file on disk. */
+  filePath?: string
+  /** Text differs from what was last opened or saved. Always false for untitled tabs. */
+  unsaved: boolean
+  /** True while a restored file tab's text is still being read. */
+  loading: boolean
   result: QueryResult | null
   error: string | null
   running: boolean

@@ -85,6 +85,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
         title: 'Query 1',
         connectionId: fallbackConnection.id,
         database: fallbackConnection.provider === 'sqlite' ? undefined : fallbackConnection.initialDatabase,
+        unsaved: false,
+        loading: false,
         result: null,
         error: null,
         running: false
@@ -129,6 +131,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
       title: `Query ${queryNumberRef.current++}`,
       connectionId,
       database,
+      unsaved: false,
+      loading: false,
       result: null,
       error: null,
       running: false
@@ -196,12 +200,14 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
   const runQuery = useCallback(async (tabId: string, sql: string): Promise<void> => {
     const tab = tabsRef.current.find((candidate) => candidate.id === tabId)
     if (!tab || tab.running || !sql.trim()) return
+    const connectionId = tab.connectionId
+    if (connectionId === null) return
 
     setTabs((current) => updateQueryTab(current, tabId, { running: true, error: null }))
     try {
-      const result = await window.latch.executeQuery(tab.connectionId, tab.database, sql)
+      const result = await window.latch.executeQuery(connectionId, tab.database, sql)
       setTabs((current) => updateQueryTab(current, tabId, { result, error: null }))
-      if (mayChangeSchema(sql)) onSchemaChangedRef.current(tab.connectionId, tab.database)
+      if (mayChangeSchema(sql)) onSchemaChangedRef.current(connectionId, tab.database)
     } catch (error) {
       setTabs((current) => updateQueryTab(current, tabId, { result: null, error: readableErrorMessage(error) }))
     } finally {

@@ -6,7 +6,7 @@ export const LEGACY_QUERY_STORAGE_KEY = 'latch:query'
 interface PersistedQueryTab {
   id: string
   title: string
-  connectionId: string
+  connectionId: string | null
   database?: string
   query: string
 }
@@ -77,7 +77,7 @@ export function restoreQueryWorkspace(
 ): RestoredQueryWorkspace {
   const seenTabIds = new Set<string>()
   const persistedTabs = snapshot?.tabs.filter((tab) => {
-    if (!validConnectionIds.has(tab.connectionId) || seenTabIds.has(tab.id)) return false
+    if (tab.connectionId === null || !validConnectionIds.has(tab.connectionId) || seenTabIds.has(tab.id)) return false
     seenTabIds.add(tab.id)
     return true
   }) ?? []
@@ -86,6 +86,8 @@ export function restoreQueryWorkspace(
     title: tab.title,
     connectionId: tab.connectionId,
     database: tab.database,
+    unsaved: false,
+    loading: false,
     result: null,
     error: null,
     running: false
