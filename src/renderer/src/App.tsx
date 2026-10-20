@@ -55,6 +55,7 @@ function App({ settings, onSettingsChange }: AppProps) {
     showNotice,
     dismissNotice,
     initialize: initializeWorkspace,
+    loadRestoredFiles,
     openQuery,
     openFiles,
     saveTab,
@@ -126,7 +127,8 @@ function App({ settings, onSettingsChange }: AppProps) {
     initializedRef.current = true
     const restoredWorkspaceContext = initializeWorkspace(connections)
     initializeExplorer(connections, restoredWorkspaceContext)
-  }, [connections, connectionsReady, initializeExplorer, initializeWorkspace])
+    loadRestoredFiles()
+  }, [connections, connectionsReady, initializeExplorer, initializeWorkspace, loadRestoredFiles])
 
   useEffect(() => {
     if (!activeTab || !tabConnection) return

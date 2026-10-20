@@ -42,6 +42,13 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
   const [closePrompt, setClosePrompt] = useState<{ tabId: string; title: string } | null>(null)
   /** A close in progress: every tab to close, where to land afterwards, and the unsaved tabs still to ask about. */
   const pendingCloseRef = useRef<{ ids: Set<string>; anchorIndex: number; queue: string[] } | null>(null)
+  /** Debounced unsaved-edit backup writes, one per file tab. */
+  const backupTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  /**
+   * File tabs restored from a backup. Their Monaco model holds the backup text, not the saved text,
+   * so version ids cannot tell when an edit returns to the saved state; they stay unsaved until saved.
+   */
+  const unknownBaselineRef = useRef(new Set<string>())
   /** The mounted SQL editor. Owned here so save and reload workflows can update Monaco models. */
   const editorRef = useRef<SqlEditorHandle | null>(null)
   const tabsRef = useRef(tabs)
@@ -76,6 +83,26 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
       persistTimerRef.current = null
     }, PERSIST_DELAY_MS)
   }, [persist])
+
+  const cancelBackup = useCallback((tabId: string): void => {
+    const timer = backupTimersRef.current.get(tabId)
+    if (timer === undefined) return
+    clearTimeout(timer)
+    backupTimersRef.current.delete(tabId)
+  }, [])
+
+  /** Writes the tab's draft to its backup file after a pause in typing, so quitting never loses edits. */
+  const scheduleBackup = useCallback((tabId: string): void => {
+    cancelBackup(tabId)
+    backupTimersRef.current.set(tabId, setTimeout(() => {
+      backupTimersRef.current.delete(tabId)
+      const draft = draftsRef.current.get(tabId)
+      if (draft === undefined) return
+      void window.latch.writeDraftBackup(tabId, draft).catch((error: unknown) => {
+        console.error('Failed to back up unsaved edits.', error)
+      })
+    }, PERSIST_DELAY_MS))
+  }, [cancelBackup])
 
   const initialize = useCallback((connections: Connection[]): RestoredExplorerContext => {
     if (initializedRef.current) {
@@ -130,14 +157,23 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
   }, [activeTabId, schedulePersist, tabs])
 
   useEffect(() => {
-    const flush = (): void => persist()
+    const flush = (): void => {
+      // A backup still waiting on its timer must land before the window goes away, so write it synchronously.
+      for (const tab of tabsRef.current) {
+        if (tab.filePath === undefined || !tab.unsaved || !backupTimersRef.current.has(tab.id)) continue
+        cancelBackup(tab.id)
+        const draft = draftsRef.current.get(tab.id)
+        if (draft !== undefined) window.latch.writeDraftBackupSync(tab.id, draft)
+      }
+      persist()
+    }
     window.addEventListener('beforeunload', flush)
     return () => {
       window.removeEventListener('beforeunload', flush)
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
       persist()
     }
-  }, [persist])
+  }, [cancelBackup, persist])
 
   const openQuery = useCallback((connectionId: string, database?: string, initialQuery = ''): void => {
     const id = crypto.randomUUID()
@@ -200,6 +236,8 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     if (ids.size === 0) return
     ids.forEach((id) => {
       draftsRef.current.delete(id)
+      cancelBackup(id)
+      unknownBaselineRef.current.delete(id)
       void window.latch.deleteDraftBackup(id).catch(() => undefined)
     })
     setTabs((current) => {
@@ -210,7 +248,15 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
       })
       return remaining
     })
-  }, [])
+  }, [cancelBackup])
+
+  /** After a successful write the tab's text is the saved text again: no backup, no unknown baseline. */
+  const markTabSaved = useCallback(async (tabId: string): Promise<void> => {
+    editorRef.current?.markSaved(tabId)
+    unknownBaselineRef.current.delete(tabId)
+    cancelBackup(tabId)
+    await window.latch.deleteDraftBackup(tabId).catch(() => undefined)
+  }, [cancelBackup])
 
   const saveTabAs = useCallback(async (tabId: string): Promise<boolean> => {
     const tab = tabsRef.current.find((candidate) => candidate.id === tabId)
@@ -222,15 +268,14 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
       // Two tabs never share a path: the file now holds what was just saved, so the other tab goes.
       const duplicate = findTabForPath(tabsRef.current, path)
       if (duplicate && duplicate.id !== tabId) removeTabs(new Set([duplicate.id]))
-      editorRef.current?.markSaved(tabId)
       setTabs((current) => updateQueryTab(current, tabId, { filePath: path, title: fileTitle(path), unsaved: false }))
-      await window.latch.deleteDraftBackup(tabId).catch(() => undefined)
+      await markTabSaved(tabId)
       return true
     } catch (error) {
       showNotice(readableErrorMessage(error))
       return false
     }
-  }, [removeTabs, showNotice])
+  }, [markTabSaved, removeTabs, showNotice])
 
   /** Writes a file tab back to disk. An untitled tab asks for a location first. */
   const saveTab = useCallback(async (tabId: string): Promise<boolean> => {
@@ -239,15 +284,43 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     if (tab.filePath === undefined) return saveTabAs(tabId)
     try {
       await window.latch.writeSqlFile(tab.filePath, draftsRef.current.get(tabId) ?? '')
-      editorRef.current?.markSaved(tabId)
       setTabs((current) => updateQueryTab(current, tabId, { unsaved: false }))
-      await window.latch.deleteDraftBackup(tabId).catch(() => undefined)
+      await markTabSaved(tabId)
       return true
     } catch (error) {
       showNotice(readableErrorMessage(error))
       return false
     }
-  }, [saveTabAs, showNotice])
+  }, [markTabSaved, saveTabAs, showNotice])
+
+  /**
+   * Fills in the text of file tabs restored from a previous launch. Clean tabs read their file; tabs
+   * with unsaved edits read their backup, falling back to the file when the backup is gone.
+   */
+  const loadRestoredFiles = useCallback((): void => {
+    for (const tab of tabsRef.current) {
+      if (!tab.loading || tab.filePath === undefined) continue
+      const { id, title, filePath, unsaved } = tab
+      void (async () => {
+        try {
+          let text: string | null = null
+          if (unsaved) {
+            text = await window.latch.readDraftBackup(id)
+            if (text !== null) unknownBaselineRef.current.add(id)
+            else showNotice(`Unsaved edits for ${title} could not be recovered.`)
+          }
+          if (text === null) text = (await window.latch.readSqlFile(filePath)).content
+          if (!tabsRef.current.some((candidate) => candidate.id === id)) return
+          draftsRef.current.set(id, text)
+          editorRef.current?.replaceQuery(id, text)
+          setTabs((current) => updateQueryTab(current, id, { loading: false, unsaved: unknownBaselineRef.current.has(id) }))
+        } catch (error) {
+          removeTabs(new Set([id]))
+          showNotice(`${title} could not be reopened: ${readableErrorMessage(error)}`)
+        }
+      })()
+    }
+  }, [removeTabs, showNotice])
 
   /** Shows the prompt for the next queued tab, or closes everything once the queue is empty. */
   const continuePendingClose = useCallback((): void => {
@@ -337,15 +410,21 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
 
   const updateDraft = useCallback((tabId: string, query: string, unsaved: boolean): void => {
     draftsRef.current.set(tabId, query)
-    setTabs((current) => {
-      const tab = current.find((candidate) => candidate.id === tabId)
-      // Only file tabs carry an unsaved marker, and the tab list only rerenders when it flips.
-      const nextUnsaved = unsaved && tab?.filePath !== undefined
-      if (!tab || tab.unsaved === nextUnsaved) return current
-      return updateQueryTab(current, tabId, { unsaved: nextUnsaved })
-    })
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId)
+    const isFile = tab?.filePath !== undefined
+    // Only file tabs carry an unsaved marker; a tab restored from a backup keeps it until saved.
+    const nextUnsaved = isFile && (unsaved || unknownBaselineRef.current.has(tabId))
+    if (isFile) {
+      if (nextUnsaved) scheduleBackup(tabId)
+      else {
+        cancelBackup(tabId)
+        if (tab?.unsaved) void window.latch.deleteDraftBackup(tabId).catch(() => undefined)
+      }
+    }
+    // The tab list only rerenders when the marker flips.
+    if (tab && tab.unsaved !== nextUnsaved) setTabs((current) => updateQueryTab(current, tabId, { unsaved: nextUnsaved }))
     schedulePersist()
-  }, [schedulePersist])
+  }, [cancelBackup, scheduleBackup, schedulePersist])
 
   const queryForTab = useCallback((tabId: string): string => draftsRef.current.get(tabId) ?? '', [])
 
@@ -396,6 +475,7 @@ export function useQueryWorkspace({ onSchemaChanged }: UseQueryWorkspaceOptions)
     showNotice,
     dismissNotice,
     initialize,
+    loadRestoredFiles,
     openQuery,
     openFiles,
     saveTab,
