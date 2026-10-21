@@ -113,10 +113,13 @@ export interface QueryResult {
 
 export type MenuCommand = 'new-query' | 'open-file' | 'save' | 'save-as'
 
+/** How a file's text is stored on disk. Saving writes the same encoding back; UTF-16 always has a byte order mark. */
+export type SqlFileEncoding = 'utf8' | 'utf8bom' | 'utf16le' | 'utf16be' | 'windows1252'
+
 export interface SqlFile {
   path: string
-  name: string
   content: string
+  encoding: SqlFileEncoding
 }
 
 export interface LatchApi {
@@ -135,14 +138,20 @@ export interface LatchApi {
   onCloseActiveTab: (callback: () => void) => () => void
   /** Shows the open dialog and reads the chosen files. Empty when cancelled. */
   openSqlFiles: () => Promise<SqlFile[]>
+  /** Only files picked in an open or save dialog can be read or written by path. */
   readSqlFile: (path: string) => Promise<SqlFile>
-  writeSqlFile: (path: string, content: string) => Promise<void>
+  /** Resolves to the encoding written: UTF-8 with a BOM when the text does not fit the requested one. */
+  writeSqlFile: (path: string, content: string, encoding: SqlFileEncoding) => Promise<SqlFileEncoding>
+  /** Keeps file access only for these paths, the files restored tabs still use. */
+  retainFileAccess: (paths: string[]) => Promise<void>
   /** Shows the save dialog. Null when cancelled. */
   chooseSqlFilePath: (defaultPath: string) => Promise<string | null>
   writeDraftBackup: (tabId: string, content: string) => Promise<void>
   writeDraftBackupSync: (tabId: string, content: string) => void
-  /** Null when no backup exists for the tab. */
+  /** Null when no backup exists for the tab; rejects when one exists but cannot be read. */
   readDraftBackup: (tabId: string) => Promise<string | null>
   deleteDraftBackup: (tabId: string) => Promise<void>
+  /** Removes old backups of tabs other than these, and abandoned temporary files. */
+  pruneDraftBackups: (keepTabIds: string[]) => Promise<void>
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void
 }

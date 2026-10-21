@@ -10,6 +10,8 @@ interface UseMonacoWorkspaceOptions {
   language: string
   theme: string
   ariaLabel: string
+  /** True while the active tab's text is loading; anything typed then would be replaced when it arrives. */
+  readOnly: boolean
   schema: DatabaseObject[]
   /** `unsaved` is true when the model differs from the text last marked saved. O(1) via version ids. */
   onQueryChange: (tabId: string, query: string, unsaved: boolean) => void
@@ -29,6 +31,7 @@ export function useMonacoWorkspace({
   language,
   theme,
   ariaLabel,
+  readOnly,
   schema,
   onQueryChange,
   onRun
@@ -132,11 +135,20 @@ export function useMonacoWorkspace({
 
     activeTabIdRef.current = tabId
     activeModelRef.current = entry.model
-    if (editor.getModel() !== entry.model) editor.setModel(entry.model)
-    const viewState = viewStatesRef.current.get(tabId)
-    if (viewState) editor.restoreViewState(viewState)
+    // The view state is restored only on a tab switch. This effect also reruns when the draft changes,
+    // and restoring then would move the cursor back to where it was when the tab was last left.
+    if (editor.getModel() !== entry.model) {
+      editor.setModel(entry.model)
+      const viewState = viewStatesRef.current.get(tabId)
+      if (viewState) editor.restoreViewState(viewState)
+    }
     editor.updateOptions({ ariaLabel })
   }, [ariaLabel, initialQuery, language, tabId])
+
+  // A layout effect, so a loading tab is never editable for a frame after it becomes active.
+  useLayoutEffect(() => {
+    editorRef.current?.updateOptions({ readOnly, readOnlyMessage: { value: 'This file cannot be edited until its text has loaded.' } })
+  }, [readOnly])
 
   useEffect(() => {
     const openIds = new Set(openTabIds)

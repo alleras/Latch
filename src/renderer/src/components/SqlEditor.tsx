@@ -32,7 +32,7 @@ interface SqlEditorProps {
   schema: DatabaseObject[]
   initialQuery: string
   running: boolean
-  /** True while a restored file tab's text is still being read; running and saving wait. */
+  /** True while a restored file tab's text is still being read; editing, running and saving wait. */
   loading: boolean
   onDatabaseChange: (database: string) => void
   onQueryChange: (tabId: string, query: string, unsaved: boolean) => void
@@ -66,6 +66,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     language,
     theme: editorTheme,
     ariaLabel: connection ? `${provider?.label ?? connection.provider} SQL editor` : 'SQL editor',
+    readOnly: loading,
     schema,
     onQueryChange,
     onRun

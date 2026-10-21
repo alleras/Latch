@@ -3,12 +3,14 @@ import assert from 'node:assert/strict'
 import type { QueryTabState } from '../src/renderer/src/query-tabs.ts'
 import {
   defaultSavePath,
+  encodingLabel,
   fileTitle,
   findTabForPath,
   partitionTabsForRemovedConnection,
   pathsEqual,
   saveLeavesTabClean,
-  unsavedFileTabs
+  unsavedFileTabs,
+  unsavedTabsInQueue
 } from '../src/renderer/src/query-files.ts'
 
 function tab(overrides: Partial<QueryTabState> & { id: string }): QueryTabState {
@@ -87,4 +89,23 @@ test('partitionTabsForRemovedConnection detaches file tabs and closes untitled o
   const { detach, close } = partitionTabsForRemovedConnection(tabs, 'c1')
   assert.deepEqual([...detach], ['F'])
   assert.deepEqual([...close], ['U'])
+})
+
+test('unsavedTabsInQueue drops queued tabs that closed or were saved since', () => {
+  const tabs = [
+    tab({ id: 'A', filePath: 'a.sql', unsaved: true }),
+    tab({ id: 'B', filePath: 'b.sql', unsaved: false }),
+    tab({ id: 'C', filePath: 'c.sql', unsaved: true })
+  ]
+  assert.deepEqual(unsavedTabsInQueue(tabs, ['C', 'gone', 'B', 'A']), ['C', 'A'])
+  assert.deepEqual(unsavedTabsInQueue(tabs, []), [])
+})
+
+test('encodingLabel names each encoding and treats a missing one as UTF-8', () => {
+  assert.equal(encodingLabel(undefined), 'UTF-8')
+  assert.equal(encodingLabel('utf8'), 'UTF-8')
+  assert.equal(encodingLabel('utf8bom'), 'UTF-8 with BOM')
+  assert.equal(encodingLabel('utf16le'), 'UTF-16 LE')
+  assert.equal(encodingLabel('utf16be'), 'UTF-16 BE')
+  assert.equal(encodingLabel('windows1252'), 'Windows-1252')
 })

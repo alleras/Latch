@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -10,6 +10,7 @@ import {
   deleteDraftBackup,
   draftBackupPath,
   flushDraftBackups,
+  pruneDraftBackups,
   readDraftBackup,
   writeDraftBackup,
   writeDraftBackupSync
@@ -97,4 +98,70 @@ test('flushDraftBackups waits for writes that are still in flight', async () => 
   void writeDraftBackup(directory, id, big)
   await flushDraftBackups()
   assert.equal(await readDraftBackup(directory, id), big)
+})
+
+test('an older write that finishes after a newer sync write does not replace it', async () => {
+  const id = randomUUID()
+  const pending = writeDraftBackup(directory, id, 'SELECT 3;\n'.repeat(800_000))
+  writeDraftBackupSync(directory, id, 'newest')
+  await pending
+  assert.equal(await readDraftBackup(directory, id), 'newest')
+})
+
+test('of two writes in flight, the later one wins whichever finishes first', async () => {
+  const id = randomUUID()
+  const older = writeDraftBackup(directory, id, 'SELECT 4;\n'.repeat(800_000))
+  const newer = writeDraftBackup(directory, id, 'small')
+  await Promise.all([older, newer])
+  assert.equal(await readDraftBackup(directory, id), 'small')
+})
+
+test('a write still in flight when the backup is deleted does not bring it back', async () => {
+  const id = randomUUID()
+  const pending = writeDraftBackup(directory, id, 'SELECT 5;\n'.repeat(800_000))
+  await deleteDraftBackup(directory, id)
+  await pending
+  assert.equal(existsSync(draftBackupPath(directory, id)), false)
+  assert.deepEqual((await readdir(directory)).filter((name) => name.startsWith(id)), [])
+})
+
+test('a backup that exists but cannot be read rejects instead of reading as missing', async () => {
+  const id = randomUUID()
+  await mkdir(draftBackupPath(directory, id), { recursive: true })
+  await assert.rejects(readDraftBackup(directory, id, []))
+})
+
+test('prune removes old orphaned backups and stale temporary files only', async () => {
+  const pruneDirectory = join(root, 'prune')
+  await mkdir(pruneDirectory, { recursive: true })
+  const now = Date.now()
+  const daysAgo = (days: number): Date => new Date(now - days * 24 * 60 * 60 * 1000)
+  const kept = randomUUID()
+  const oldOrphan = randomUUID()
+  const recentOrphan = randomUUID()
+  const files: Array<[string, Date]> = [
+    [`${kept}.sql`, daysAgo(30)],
+    [`${oldOrphan}.sql`, daysAgo(8)],
+    [`${recentOrphan}.sql`, daysAgo(1)],
+    [`${kept}.sql.1.7.tmp`, daysAgo(1)],
+    [`${kept}.sql.1.8.tmp`, new Date(now)],
+    [`${kept}.sql.${process.pid}.9.tmp`, daysAgo(1)],
+    ['notes.txt', daysAgo(30)]
+  ]
+  for (const [name, time] of files) {
+    await writeFile(join(pruneDirectory, name), 'x', 'utf8')
+    await utimes(join(pruneDirectory, name), time, time)
+  }
+  await pruneDraftBackups(pruneDirectory, [kept], now)
+  assert.deepEqual((await readdir(pruneDirectory)).sort(), [
+    `${kept}.sql`,
+    `${kept}.sql.${process.pid}.9.tmp`,
+    `${kept}.sql.1.8.tmp`,
+    `${recentOrphan}.sql`,
+    'notes.txt'
+  ].sort())
+})
+
+test('prune tolerates a missing directory', async () => {
+  await pruneDraftBackups(join(root, 'never-created'), [])
 })

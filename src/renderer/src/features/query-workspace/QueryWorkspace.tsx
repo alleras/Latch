@@ -1,11 +1,12 @@
 import { memo, useCallback, useDeferredValue, useMemo, type RefObject } from 'react'
 import DataObjectRounded from '@mui/icons-material/DataObjectRounded'
-import { Box, Button, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Stack, Typography } from '@mui/material'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import type { Connection, DatabaseObject, ProviderDefinition } from '../../../../shared/types'
 import { QueryTabs } from '../../components/QueryTabs'
 import { ResultsPanel } from '../../components/ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from '../../components/SqlEditor'
+import { encodingLabel } from '../../query-files'
 import { connectionDatabaseKey, type CloseTabScope, type QueryTabState } from '../../query-tabs'
 
 interface QueryWorkspaceProps {
@@ -111,22 +112,27 @@ export const QueryWorkspace = memo(function QueryWorkspace({
             style={{ flex: 1, minHeight: 0 }}
           >
             <Panel id="editor" defaultSize="54%" minSize={150}>
-              <SqlEditor
-                ref={editorRef}
-                tabId={activeTab.id}
-                openTabIds={openTabIds}
-                connection={connection}
-                provider={provider}
-                database={activeTab.database}
-                databases={connection ? databasesByConnection[connection.id] ?? [] : []}
-                schema={connection ? schemasByContext[connectionDatabaseKey(connection.id, activeTab.database)] ?? [] : []}
-                initialQuery={queryForTab(activeTab.id)}
-                running={activeTab.running}
-                loading={activeTab.loading}
-                onDatabaseChange={changeActiveDatabase}
-                onQueryChange={onQueryChange}
-                onRun={runActiveQuery}
-              />
+              <Stack sx={{ height: '100%', minHeight: 0 }}>
+                {activeTab.loadError && <Alert severity="warning" sx={{ borderRadius: 0, flex: '0 0 auto' }}>{activeTab.loadError}</Alert>}
+                <Box sx={{ flex: 1, minHeight: 0 }}>
+                  <SqlEditor
+                    ref={editorRef}
+                    tabId={activeTab.id}
+                    openTabIds={openTabIds}
+                    connection={connection}
+                    provider={provider}
+                    database={activeTab.database}
+                    databases={connection ? databasesByConnection[connection.id] ?? [] : []}
+                    schema={connection ? schemasByContext[connectionDatabaseKey(connection.id, activeTab.database)] ?? [] : []}
+                    initialQuery={queryForTab(activeTab.id)}
+                    running={activeTab.running}
+                    loading={activeTab.loading}
+                    onDatabaseChange={changeActiveDatabase}
+                    onQueryChange={onQueryChange}
+                    onRun={runActiveQuery}
+                  />
+                </Box>
+              </Stack>
             </Panel>
             <Separator className="resize-handle" />
             <Panel id="results" defaultSize="46%" minSize={120}>
@@ -157,7 +163,7 @@ export const QueryWorkspace = memo(function QueryWorkspace({
             )}
             <Box sx={{ flex: 1 }} />
             <Typography variant="caption" color="text.disabled">{provider?.label}</Typography>
-            <Typography variant="caption" color="text.disabled">UTF-8</Typography>
+            <Typography variant="caption" color="text.disabled">{encodingLabel(activeTab.encoding)}</Typography>
           </Stack>
         </Box>
       )}

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AddRounded from '@mui/icons-material/AddRounded'
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
 import StorageRounded from '@mui/icons-material/StorageRounded'
-import { Box, Button, IconButton, Snackbar, Stack, Tooltip, Typography } from '@mui/material'
+import { Box, Button, IconButton, Stack, Tooltip, Typography } from '@mui/material'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
-import type { MenuCommand, ServerConnectionInput } from '../../shared/types'
+import type { ServerConnectionInput } from '../../shared/types'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { ConnectionDialog } from './components/ConnectionDialog'
 import { LatchMark } from './components/LatchMark'
+import { NoticeSnackbar } from './components/NoticeSnackbar'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog'
@@ -16,7 +18,7 @@ import { preferredDatabase, useDatabaseCatalog } from './features/database-catal
 import { useConnectionManager } from './features/connections/useConnectionManager'
 import { useDatabaseExplorer } from './features/database-explorer/useDatabaseExplorer'
 import { QueryWorkspace } from './features/query-workspace/QueryWorkspace'
-import { useQueryWorkspace } from './features/query-workspace/useQueryWorkspace'
+import { useQueryWorkspace, type ConnectionTarget } from './features/query-workspace/useQueryWorkspace'
 import { connectionDatabaseKey } from './query-tabs'
 import type { AppSettings } from './settings'
 
@@ -47,41 +49,6 @@ function App({ settings, onSettingsChange }: AppProps) {
     void loadSchema(connectionId, database, true).catch(console.error)
   }, [loadSchema])
   const {
-    tabs,
-    activeTabId,
-    activeTab,
-    editorRef,
-    notice,
-    showNotice,
-    dismissNotice,
-    initialize: initializeWorkspace,
-    loadRestoredFiles,
-    openQuery,
-    openFiles,
-    saveTab,
-    saveTabAs,
-    requestCloseTabs,
-    closePrompt,
-    answerClosePrompt,
-    adoptionAllowedForActivation,
-    attachConnection,
-    releaseConnection,
-    selectTab,
-    updateDraft,
-    queryForTab,
-    changeDatabase,
-    reconcileDatabases,
-    clearResults,
-    runQuery
-  } = useQueryWorkspace({ onSchemaChanged: handleSchemaChanged })
-
-  const [connectionDialogOpen, setConnectionDialogOpen] = useState(false)
-  const [connectionError, setConnectionError] = useState<string | null>(null)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
-  const initializedRef = useRef(false)
-  const applicationLayout = useDefaultLayout({ id: 'application-panels', storage: localStorage })
-  const {
     database: explorerDatabase,
     connection: explorerConnection,
     schema: explorerSchema,
@@ -98,32 +65,42 @@ function App({ settings, onSettingsChange }: AppProps) {
     loadDatabases,
     loadSchema
   })
+  const explorerTarget = useMemo((): ConnectionTarget | null => explorerConnection
+    ? { connectionId: explorerConnection.id, database: explorerConnection.provider === 'sqlite' ? undefined : explorerDatabase }
+    : null, [explorerConnection, explorerDatabase])
+  const {
+    tabs,
+    activeTabId,
+    activeTab,
+    editorRef,
+    notice,
+    dismissNotice,
+    closePrompt,
+    answerClosePrompt,
+    confirmation,
+    answerConfirmation,
+    initialize: initializeWorkspace,
+    loadRestoredFiles,
+    openQuery,
+    requestCloseTabs,
+    adoptConnection,
+    releaseConnection,
+    selectTab,
+    updateDraft,
+    queryForTab,
+    changeDatabase,
+    reconcileDatabases,
+    clearResults,
+    runQuery
+  } = useQueryWorkspace({ onSchemaChanged: handleSchemaChanged, explorerTarget })
+
+  const [connectionDialogOpen, setConnectionDialogOpen] = useState(false)
+  const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
+  const initializedRef = useRef(false)
+  const applicationLayout = useDefaultLayout({ id: 'application-panels', storage: localStorage })
   const tabConnection = connections.find((connection) => connection.id === activeTab?.connectionId) ?? null
-  // Async handlers and activation effects read the latest values through refs, never stale closures.
-  const activeTabRef = useRef(activeTab)
-  const explorerRef = useRef({ connection: explorerConnection, database: explorerDatabase })
-  activeTabRef.current = activeTab
-  explorerRef.current = { connection: explorerConnection, database: explorerDatabase }
-
-  /**
-   * A tab with no connection adopts one only on a user action: activation, a sidebar pick,
-   * or adding a connection. Returns true when the active tab took the connection.
-   */
-  const adoptIntoActiveTab = useCallback((connectionId: string, database?: string): boolean => {
-    const tab = activeTabRef.current
-    if (!tab || tab.connectionId !== null) return false
-    attachConnection(tab.id, connectionId, database)
-    return true
-  }, [attachConnection])
-
-  useEffect(() => {
-    // Activation trigger: keyed on the active tab only, so explorer changes alone never retarget a tab,
-    // and activations the app made itself (launch restore, connection removal, failed reloads) are skipped.
-    if (!adoptionAllowedForActivation(activeTabId)) return
-    const explorer = explorerRef.current
-    if (!explorer.connection) return
-    adoptIntoActiveTab(explorer.connection.id, explorer.connection.provider === 'sqlite' ? undefined : explorer.database)
-  }, [activeTabId, adoptIntoActiveTab, adoptionAllowedForActivation])
 
   useEffect(() => {
     if (!connectionsReady || initializedRef.current) return
@@ -156,52 +133,26 @@ function App({ settings, onSettingsChange }: AppProps) {
   }, [])
 
   const addQueryFromExplorer = useCallback((): void => {
-    if (!explorerConnection) {
+    if (!explorerTarget) {
       openConnectionDialog()
       return
     }
-    openQuery(explorerConnection.id, explorerConnection.provider === 'sqlite' ? undefined : explorerDatabase)
-  }, [explorerConnection, explorerDatabase, openConnectionDialog, openQuery])
+    openQuery(explorerTarget.connectionId, explorerTarget.database)
+  }, [explorerTarget, openConnectionDialog, openQuery])
 
-  const openFilesFromDialog = useCallback(async (): Promise<void> => {
-    try {
-      const files = await window.latch.openSqlFiles()
-      if (files.length === 0) return
-      // New file tabs target whatever the explorer shows now, exactly like New Query.
-      const explorer = explorerRef.current
-      openFiles(files, explorer.connection?.id ?? null, explorer.connection?.provider === 'sqlite' ? undefined : explorer.database)
-    } catch (error) {
-      showNotice(readableErrorMessage(error))
-    }
-  }, [openFiles, showNotice])
-
-  const handleMenuCommand = useCallback((command: MenuCommand): void => {
-    switch (command) {
-      case 'new-query':
-        addQueryFromExplorer()
-        break
-      case 'open-file':
-        void openFilesFromDialog()
-        break
-      case 'save':
-        if (activeTabRef.current) void saveTab(activeTabRef.current.id)
-        break
-      case 'save-as':
-        if (activeTabRef.current) void saveTabAs(activeTabRef.current.id)
-        break
-    }
-  }, [addQueryFromExplorer, openFilesFromDialog, saveTab, saveTabAs])
-
-  useEffect(() => window.latch.onMenuCommand(handleMenuCommand), [handleMenuCommand])
+  // File menu items belong to the query workspace; New Query may open the connection dialog, so it stays here.
+  useEffect(() => window.latch.onMenuCommand((command) => {
+    if (command === 'new-query') addQueryFromExplorer()
+  }), [addQueryFromExplorer])
 
   const addSqlite = useCallback(async (mode: 'open' | 'create'): Promise<void> => {
     const connection = await openSqlite(mode)
     if (!connection) return
     selectAddedConnection(connection.id)
     // A connectionless tab waiting for a target takes the new database instead of a fresh query tab.
-    if (!adoptIntoActiveTab(connection.id)) openQuery(connection.id)
+    if (!adoptConnection(connection.id)) openQuery(connection.id)
     setConnectionDialogOpen(false)
-  }, [adoptIntoActiveTab, openQuery, openSqlite, selectAddedConnection])
+  }, [adoptConnection, openQuery, openSqlite, selectAddedConnection])
 
   const addServerConnection = useCallback(async (input: ServerConnectionInput): Promise<void> => {
     setIsConnecting(true)
@@ -209,14 +160,14 @@ function App({ settings, onSettingsChange }: AppProps) {
     try {
       const connection = await addServer(input)
       selectAddedConnection(connection.id)
-      adoptIntoActiveTab(connection.id, connection.provider === 'sqlite' ? undefined : connection.initialDatabase)
+      adoptConnection(connection.id, connection.provider === 'sqlite' ? undefined : connection.initialDatabase)
       setConnectionDialogOpen(false)
     } catch (error) {
       setConnectionError(readableErrorMessage(error))
     } finally {
       setIsConnecting(false)
     }
-  }, [addServer, adoptIntoActiveTab, selectAddedConnection])
+  }, [addServer, adoptConnection, selectAddedConnection])
 
   const removeConnection = useCallback(async (connectionId: string): Promise<void> => {
     const remaining = await removeManagedConnection(connectionId)
@@ -227,13 +178,13 @@ function App({ settings, onSettingsChange }: AppProps) {
 
   const selectConnectionFromSidebar = useCallback((connectionId: string): void => {
     selectExplorerConnection(connectionId)
-    adoptIntoActiveTab(connectionId)
-  }, [adoptIntoActiveTab, selectExplorerConnection])
+    adoptConnection(connectionId)
+  }, [adoptConnection, selectExplorerConnection])
 
   const selectDatabaseFromSidebar = useCallback((connectionId: string, database: string): void => {
     selectExplorerDatabase(connectionId, database)
-    adoptIntoActiveTab(connectionId, database)
-  }, [adoptIntoActiveTab, selectExplorerDatabase])
+    adoptConnection(connectionId, database)
+  }, [adoptConnection, selectExplorerDatabase])
 
   const expandConnection = useCallback((connectionId: string): void => {
     const connection = connections.find((candidate) => candidate.id === connectionId)
@@ -341,18 +292,18 @@ function App({ settings, onSettingsChange }: AppProps) {
       />
       <UnsavedChangesDialog
         open={Boolean(closePrompt)}
-        fileName={closePrompt?.title ?? ''}
+        fileName={closePrompt?.title}
+        saving={closePrompt?.saving ?? false}
         onSave={() => answerClosePrompt('save')}
         onDiscard={() => answerClosePrompt('discard')}
         onCancel={() => answerClosePrompt('cancel')}
       />
-      <Snackbar
-        open={Boolean(notice)}
-        autoHideDuration={6000}
-        onClose={dismissNotice}
-        message={notice}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      <ConfirmDialog
+        request={confirmation}
+        onConfirm={() => answerConfirmation(true)}
+        onCancel={() => answerConfirmation(false)}
       />
+      <NoticeSnackbar notice={notice} onDismiss={dismissNotice} />
     </Box>
   )
 }

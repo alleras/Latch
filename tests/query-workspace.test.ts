@@ -120,7 +120,7 @@ test('restore carries the unsaved flag for file tabs', () => {
 })
 
 test('snapshot omits query for file tabs and includes filePath and unsaved', () => {
-  const tabs = [tab({ id: 'f1', title: 'daily.sql', filePath: 'C:\\q\\daily.sql', unsaved: true, connectionId: null })]
+  const tabs = [tab({ id: 'f1', title: 'daily.sql', filePath: 'C:\\q\\daily.sql', unsaved: true, connectionId: null, encoding: 'utf16le' })]
   const drafts = new Map([['f1', 'huge file text']])
   const snapshot = createQueryWorkspaceSnapshot(tabs, drafts, 'f1')
   assert.deepEqual(snapshot.tabs, [{
@@ -129,7 +129,8 @@ test('snapshot omits query for file tabs and includes filePath and unsaved', () 
     connectionId: null,
     database: undefined,
     filePath: 'C:\\q\\daily.sql',
-    unsaved: true
+    unsaved: true,
+    encoding: 'utf16le'
   }])
   assert.equal(JSON.stringify(snapshot).includes('huge file text'), false)
 })
@@ -153,4 +154,22 @@ test('snapshot round-trips through read for both tab kinds', () => {
     ['u1', 'c1', undefined, undefined, 'SELECT 1'],
     ['f1', null, 'a.sql', true, undefined]
   ])
+})
+
+test('a file tab keeps its encoding through snapshot, read and restore', () => {
+  const tabs = [tab({ id: 'f1', title: 'a.sql', filePath: 'a.sql', unsaved: true, encoding: 'windows1252' })]
+  const read = readQueryWorkspace(JSON.stringify(createQueryWorkspaceSnapshot(tabs, new Map(), 'f1')))
+  assert.ok(read)
+  assert.equal(restoreQueryWorkspace(read, new Set(['c1'])).tabs[0].encoding, 'windows1252')
+})
+
+test('read drops an encoding it does not know', () => {
+  const read = readQueryWorkspace(JSON.stringify({
+    version: 1,
+    activeTabId: 'f1',
+    tabs: [{ id: 'f1', title: 'a.sql', connectionId: null, filePath: 'a.sql', encoding: 'ebcdic' }]
+  }))
+  assert.ok(read)
+  assert.equal(read.tabs[0].encoding, undefined)
+  assert.equal(restoreQueryWorkspace(read, new Set()).tabs[0].encoding, undefined)
 })

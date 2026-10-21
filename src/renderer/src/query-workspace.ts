@@ -1,7 +1,11 @@
+import type { SqlFileEncoding } from '../../shared/types'
 import type { QueryTabState } from './query-tabs'
 
 export const QUERY_WORKSPACE_STORAGE_KEY = 'latch:query-workspace:v1'
 export const LEGACY_QUERY_STORAGE_KEY = 'latch:query'
+
+// Typed as a record so adding an encoding to SqlFileEncoding fails to compile until it is listed here.
+const KNOWN_ENCODINGS: Record<SqlFileEncoding, true> = { utf8: true, utf8bom: true, utf16le: true, utf16be: true, windows1252: true }
 
 interface PersistedQueryTab {
   id: string
@@ -12,6 +16,12 @@ interface PersistedQueryTab {
   query?: string
   filePath?: string
   unsaved?: boolean
+  /** The file's encoding, needed to save a tab restored from its backup without rereading the file. */
+  encoding?: SqlFileEncoding
+}
+
+function optionalEncoding(value: unknown): SqlFileEncoding | undefined {
+  return typeof value === 'string' && Object.hasOwn(KNOWN_ENCODINGS, value) ? value as SqlFileEncoding : undefined
 }
 
 export interface QueryWorkspaceSnapshot {
@@ -61,7 +71,9 @@ export function readQueryWorkspace(value: string | null): QueryWorkspaceSnapshot
         title: tab.title,
         connectionId,
         database: optionalString(tab.database),
-        ...(filePath === undefined ? { query: query ?? '' } : { filePath, unsaved: tab.unsaved === true })
+        ...(filePath === undefined
+          ? { query: query ?? '' }
+          : { filePath, unsaved: tab.unsaved === true, encoding: optionalEncoding(tab.encoding) })
       }]
     })
 
@@ -99,6 +111,7 @@ export function restoreQueryWorkspace(
       connectionId: connectionKnown ? tab.connectionId : null,
       database: connectionKnown ? tab.database : undefined,
       filePath: tab.filePath,
+      encoding: tab.encoding,
       unsaved: isFile && tab.unsaved === true,
       loading: isFile,
       result: null,
@@ -144,7 +157,7 @@ export function createQueryWorkspaceSnapshot(
       database: tab.database,
       ...(tab.filePath === undefined
         ? { query: drafts.get(tab.id) ?? '' }
-        : { filePath: tab.filePath, unsaved: tab.unsaved })
+        : { filePath: tab.filePath, unsaved: tab.unsaved, encoding: tab.encoding })
     }))
   }
 }

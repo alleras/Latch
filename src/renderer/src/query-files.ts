@@ -1,4 +1,18 @@
+import type { SqlFileEncoding } from '../../shared/types'
 import type { QueryTabState } from './query-tabs'
+
+const ENCODING_LABELS: Record<SqlFileEncoding, string> = {
+  utf8: 'UTF-8',
+  utf8bom: 'UTF-8 with BOM',
+  utf16le: 'UTF-16 LE',
+  utf16be: 'UTF-16 BE',
+  windows1252: 'Windows-1252'
+}
+
+/** Status bar name of a tab's encoding. Untitled tabs, and file tabs from before encodings were kept, are UTF-8. */
+export function encodingLabel(encoding: SqlFileEncoding | undefined): string {
+  return ENCODING_LABELS[encoding ?? 'utf8']
+}
 
 /** File name portion of a path from either platform; the renderer has no node:path. */
 export function fileTitle(path: string): string {
@@ -31,6 +45,12 @@ export function saveLeavesTabClean(capturedVersion: number | null, currentVersio
 /** File tabs with unsaved edits among `ids`, in tab order. Untitled tabs never qualify. */
 export function unsavedFileTabs(tabs: QueryTabState[], ids: Set<string>): QueryTabState[] {
   return tabs.filter((tab) => ids.has(tab.id) && tab.filePath !== undefined && tab.unsaved)
+}
+
+/** The queued tabs still worth asking about during a close: those still open and still unsaved, in queue order. */
+export function unsavedTabsInQueue(tabs: QueryTabState[], queue: string[]): string[] {
+  const unsaved = new Set(tabs.filter((tab) => tab.unsaved).map((tab) => tab.id))
+  return queue.filter((id) => unsaved.has(id))
 }
 
 /** When a connection is removed, file tabs keep their text and detach; untitled tabs close. */
