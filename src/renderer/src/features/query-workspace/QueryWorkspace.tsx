@@ -1,16 +1,19 @@
-import { memo, useCallback, useDeferredValue, useMemo, useRef } from 'react'
+import { memo, useCallback, useDeferredValue, useMemo, type RefObject } from 'react'
 import DataObjectRounded from '@mui/icons-material/DataObjectRounded'
-import { Box, Button, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Stack, Typography } from '@mui/material'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import type { Connection, DatabaseObject, ProviderDefinition } from '../../../../shared/types'
 import { QueryTabs } from '../../components/QueryTabs'
 import { ResultsPanel } from '../../components/ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from '../../components/SqlEditor'
+import { encodingLabel } from '../../query-files'
 import { connectionDatabaseKey, type CloseTabScope, type QueryTabState } from '../../query-tabs'
 
 interface QueryWorkspaceProps {
   tabs: QueryTabState[]
   activeTabId: string | null
+  /** Owned by the query workspace controller so save workflows can reach the editor. */
+  editorRef: RefObject<SqlEditorHandle | null>
   connections: Connection[]
   providers: ProviderDefinition[]
   databasesByConnection: Record<string, string[]>
@@ -19,7 +22,7 @@ interface QueryWorkspaceProps {
   onCloseTabs: (tabId: string, scope?: CloseTabScope) => void
   onAddTab: () => void
   onDatabaseChange: (tabId: string, database: string) => void
-  onQueryChange: (tabId: string, query: string) => void
+  onQueryChange: (tabId: string, query: string, unsaved: boolean) => void
   queryForTab: (tabId: string) => string
   onRunQuery: (tabId: string, sql: string) => void
   onClearResults: (tabId: string) => void
@@ -46,6 +49,7 @@ const TabResultsPanel = memo(function TabResultsPanel({ tab, active, onClearResu
 export const QueryWorkspace = memo(function QueryWorkspace({
   tabs,
   activeTabId,
+  editorRef,
   connections,
   providers,
   databasesByConnection,
@@ -59,7 +63,6 @@ export const QueryWorkspace = memo(function QueryWorkspace({
   onRunQuery,
   onClearResults
 }: QueryWorkspaceProps) {
-  const editorRef = useRef<SqlEditorHandle>(null)
   const queryLayout = useDefaultLayout({ id: 'query-panels', storage: localStorage })
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
   const connection = connections.find((item) => item.id === activeTab?.connectionId) ?? null
@@ -72,7 +75,7 @@ export const QueryWorkspace = memo(function QueryWorkspace({
   )
 
   const runActiveQuery = useCallback((): void => {
-    if (!activeTab) return
+    if (!activeTab || activeTab.connectionId === null || activeTab.loading) return
     const selection = editorRef.current?.getSelectedQuery().trim()
     const sql = selection || editorRef.current?.getQuery() || ''
     if (sql.trim()) onRunQuery(activeTab.id, sql)
@@ -93,7 +96,7 @@ export const QueryWorkspace = memo(function QueryWorkspace({
         onAdd={onAddTab}
       />
 
-      {!activeTab || !connection ? (
+      {!activeTab ? (
         <Stack sx={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1.5, color: 'text.disabled' }}>
           <DataObjectRounded sx={{ fontSize: 28 }} />
           <Typography variant="body2">Open a query from a database or create a new tab.</Typography>
@@ -109,21 +112,27 @@ export const QueryWorkspace = memo(function QueryWorkspace({
             style={{ flex: 1, minHeight: 0 }}
           >
             <Panel id="editor" defaultSize="54%" minSize={150}>
-              <SqlEditor
-                ref={editorRef}
-                tabId={activeTab.id}
-                openTabIds={openTabIds}
-                connection={connection}
-                provider={provider}
-                database={activeTab.database}
-                databases={databasesByConnection[connection.id] ?? []}
-                schema={schemasByContext[connectionDatabaseKey(connection.id, activeTab.database)] ?? []}
-                initialQuery={queryForTab(activeTab.id)}
-                running={activeTab.running}
-                onDatabaseChange={changeActiveDatabase}
-                onQueryChange={onQueryChange}
-                onRun={runActiveQuery}
-              />
+              <Stack sx={{ height: '100%', minHeight: 0 }}>
+                {activeTab.loadError && <Alert severity="warning" sx={{ borderRadius: 0, flex: '0 0 auto' }}>{activeTab.loadError}</Alert>}
+                <Box sx={{ flex: 1, minHeight: 0 }}>
+                  <SqlEditor
+                    ref={editorRef}
+                    tabId={activeTab.id}
+                    openTabIds={openTabIds}
+                    connection={connection}
+                    provider={provider}
+                    database={activeTab.database}
+                    databases={connection ? databasesByConnection[connection.id] ?? [] : []}
+                    schema={connection ? schemasByContext[connectionDatabaseKey(connection.id, activeTab.database)] ?? [] : []}
+                    initialQuery={queryForTab(activeTab.id)}
+                    running={activeTab.running}
+                    loading={activeTab.loading}
+                    onDatabaseChange={changeActiveDatabase}
+                    onQueryChange={onQueryChange}
+                    onRun={runActiveQuery}
+                  />
+                </Box>
+              </Stack>
             </Panel>
             <Separator className="resize-handle" />
             <Panel id="results" defaultSize="46%" minSize={120}>
@@ -140,12 +149,21 @@ export const QueryWorkspace = memo(function QueryWorkspace({
             </Panel>
           </Group>
           <Stack component="footer" direction="row" sx={{ height: 25, flex: '0 0 auto', alignItems: 'center', gap: 1, px: 1.25, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}>
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', boxShadow: '0 0 0 3px rgba(141,221,138,.08)' }} />
-            <Typography variant="caption" color="text.secondary">Connected</Typography>
-            <Typography variant="caption" color="text.disabled">{activeTab.database ?? connection.name}</Typography>
+            {connection ? (
+              <>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', boxShadow: '0 0 0 3px rgba(141,221,138,.08)' }} />
+                <Typography variant="caption" color="text.secondary">Connected</Typography>
+                <Typography variant="caption" color="text.disabled">{activeTab.database ?? connection.name}</Typography>
+              </>
+            ) : (
+              <>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'text.disabled' }} />
+                <Typography variant="caption" color="text.secondary">Not connected</Typography>
+              </>
+            )}
             <Box sx={{ flex: 1 }} />
             <Typography variant="caption" color="text.disabled">{provider?.label}</Typography>
-            <Typography variant="caption" color="text.disabled">UTF-8</Typography>
+            <Typography variant="caption" color="text.disabled">{encodingLabel(activeTab.encoding)}</Typography>
           </Stack>
         </Box>
       )}
