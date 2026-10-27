@@ -84,6 +84,14 @@ export function useMonacoWorkspace({
       scrollbar: { verticalScrollbarSize: 9, horizontalScrollbarSize: 9 }
     })
     editorRef.current = editor
+    // Monaco can cache fallback-font widths before the bundled web font finishes loading.
+    // Refresh those metrics once DM Mono is available so the caret and hit testing match the text.
+    let disposed = false
+    void document.fonts.load('14px "DM Mono"').then(() => {
+      if (!disposed) monaco.editor.remeasureFonts()
+    }, () => {
+      // Keep the editor usable with its fallback font if the bundled font cannot load.
+    })
     editor.addAction({
       id: 'latch.run-query',
       label: 'Run query',
@@ -93,6 +101,7 @@ export function useMonacoWorkspace({
     const completionProviders = registerSqlCompletionProviders(() => schemaRef.current)
 
     return () => {
+      disposed = true
       completionProviders.forEach((registration) => registration.dispose())
       editor.dispose()
       for (const entry of modelsRef.current.values()) {

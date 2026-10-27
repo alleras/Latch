@@ -21,9 +21,12 @@ jobs:
           - platform: mac
             runner: macos-latest
             command: npm run package:mac
-          - platform: windows
+          - platform: windows-x64
             runner: windows-latest
-            command: npm run package:win
+            command: npm run package:win -- --x64
+          - platform: windows-arm64
+            runner: windows-latest
+            command: npm run package:win -- --arm64
           - platform: linux
             runner: ubuntu-latest
             command: npm run package:linux
