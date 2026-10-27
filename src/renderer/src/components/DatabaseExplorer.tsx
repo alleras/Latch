@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import AccountTreeRounded from '@mui/icons-material/AccountTreeRounded'
 import BoltRounded from '@mui/icons-material/BoltRounded'
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded'
@@ -8,7 +8,6 @@ import FolderOutlined from '@mui/icons-material/FolderOutlined'
 import FunctionsRounded from '@mui/icons-material/FunctionsRounded'
 import KeyRounded from '@mui/icons-material/KeyRounded'
 import RefreshRounded from '@mui/icons-material/RefreshRounded'
-import SearchRounded from '@mui/icons-material/SearchRounded'
 import StorageRounded from '@mui/icons-material/StorageRounded'
 import TableChartRounded from '@mui/icons-material/TableChartRounded'
 import ViewColumnRounded from '@mui/icons-material/ViewColumnRounded'
@@ -16,16 +15,15 @@ import VisibilityRounded from '@mui/icons-material/VisibilityRounded'
 import {
   Box,
   IconButton,
-  InputAdornment,
   ListItemButton,
   ListItemText,
   Stack,
-  TextField,
   Tooltip,
   Typography
 } from '@mui/material'
 import type { DatabaseObject, DatabaseObjectType, ProviderId, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../../shared/types'
 import { componentSizes } from '../theme'
+import { PanelFilterField, PanelFilterToggle, usePanelFilter } from './PanelFilter'
 
 type ExplorerCategory = DatabaseObjectType
 const SIDEBAR_SIZE = componentSizes.sidebarPanel
@@ -37,10 +35,6 @@ interface DatabaseExplorerProps {
   loading: boolean
   objects: DatabaseObject[]
   onRefresh: () => void
-}
-
-interface DatabaseObjectFilterProps {
-  onFilterChange: (value: string) => void
 }
 
 const CATEGORY_ORDER: ExplorerCategory[] = ['table', 'view', 'procedure', 'function', 'trigger']
@@ -57,25 +51,6 @@ const PROVIDER_CATEGORIES: Record<ProviderId, ExplorerCategory[]> = {
   mysql: CATEGORY_ORDER,
   sqlserver: CATEGORY_ORDER,
   azuresql: CATEGORY_ORDER
-}
-
-function DatabaseObjectFilter({ onFilterChange }: DatabaseObjectFilterProps) {
-  const [value, setValue] = useState('')
-  const deferredValue = useDeferredValue(value)
-
-  useEffect(() => {
-    onFilterChange(deferredValue.trim().toLowerCase())
-  }, [deferredValue, onFilterChange])
-
-  return (
-    <TextField
-      placeholder="Filter database objects"
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRounded sx={{ fontSize: SIDEBAR_SIZE.icon }} /></InputAdornment> } }}
-      sx={{ mx: 0.75, mb: 0.5, '& .MuiInputBase-root': { height: SIDEBAR_SIZE.filterHeight } }}
-    />
-  )
 }
 
 function categoryIcon(category: ExplorerCategory) {
@@ -592,7 +567,8 @@ export function DatabaseExplorer({
   objects,
   onRefresh
 }: DatabaseExplorerProps) {
-  const [needle, setNeedle] = useState('')
+  const filter = usePanelFilter()
+  const { needle, setNeedle } = filter
   const contextKey = `${connectionId}:${database ?? 'main'}`
 
   const schemas = useMemo(() => {
@@ -633,9 +609,10 @@ export function DatabaseExplorer({
   useEffect(() => setNeedle(''), [contextKey])
 
   return (
-    <Box sx={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <Box {...filter.panelProps} aria-label="Database Explorer" sx={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', outline: 'none' }}>
       <Stack direction="row" sx={{ height: SIDEBAR_SIZE.headerHeight, alignItems: 'center', px: 1.25, flex: '0 0 auto' }}>
         <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>Database Explorer</Typography>
+        <PanelFilterToggle label="Database Explorer" open={filter.open} onToggle={filter.toggle} />
         <Tooltip title="Refresh database objects">
           <span>
             <IconButton size="small" disabled={loading || (provider !== 'sqlite' && !database)} onClick={onRefresh}>
@@ -644,7 +621,7 @@ export function DatabaseExplorer({
           </span>
         </Tooltip>
       </Stack>
-      <DatabaseObjectFilter key={contextKey} onFilterChange={setNeedle} />
+      {filter.open && <PanelFilterField key={contextKey} label="Filter database objects" inputRef={filter.inputRef} onFilterChange={setNeedle} />}
       <Box sx={{ minHeight: 0, flex: 1, overflow: 'auto', px: 0.75, pb: 0.75 }}>
         <Stack direction="row" sx={{ height: SIDEBAR_SIZE.rowHeight, alignItems: 'center', gap: 0.75, px: 0.5 }}>
           <StorageRounded sx={{ fontSize: SIDEBAR_SIZE.icon, color: 'primary.main' }} />
