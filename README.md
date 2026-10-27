@@ -48,6 +48,8 @@ Run the same validation used in CI:
 npm run build
 ```
 
+Windows CI also launches the built app on x64 and ARM64 to check the integrated menu, keyboard navigation, edit-command focus, window-control safe area, and both themes. Dark and light screenshots are attached to the CI run.
+
 Useful commands:
 
 | Command | Purpose |

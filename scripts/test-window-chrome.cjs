@@ -38,6 +38,7 @@ const menuAction = (label) => `[...document.querySelectorAll('[role="menu"] [dat
 async function testChrome(window) {
   const contents = window.webContents
   await waitFor(window, `Boolean(${menuButton('File')})`)
+  await waitFor(window, 'navigator.windowControlsOverlay?.visible === true')
   assert.equal(window.isMenuBarVisible(), false, 'native menu strip must be hidden')
   const safeArea = await contents.executeJavaScript(`(() => {
     const overlay = navigator.windowControlsOverlay;
@@ -90,8 +91,12 @@ async function testChrome(window) {
   for (const mode of ['dark', 'light']) {
     await contents.executeJavaScript(`document.querySelector('[aria-label="Open settings"]').click()`)
     await waitFor(window, `Boolean(document.querySelector('[role="dialog"] [aria-label="${mode === 'dark' ? 'Dark' : 'Light'}"]'))`)
-    await contents.executeJavaScript(`document.querySelector('[role="dialog"] [aria-label="${mode === 'dark' ? 'Dark' : 'Light'}"]').click(); [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === 'Save settings').click()`)
+    const themeLabel = mode === 'dark' ? 'Dark' : 'Light'
+    await contents.executeJavaScript(`document.querySelector('[role="dialog"] [aria-label="${themeLabel}"]').click()`)
+    await waitFor(window, `document.querySelector('[role="dialog"] [aria-label="${themeLabel}"]').getAttribute('aria-pressed') === 'true'`)
+    await contents.executeJavaScript(`[...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === 'Save settings').click()`)
     await waitFor(window, `!document.querySelector('[role="dialog"]')`)
+    await waitFor(window, `getComputedStyle(document.documentElement).getPropertyValue('--latch-shell').trim() === '${mode === 'dark' ? '#0d1014' : '#f8f9fb'}'`)
     await contents.executeJavaScript(`${menuButton('File')}.click()`)
     await waitFor(window, `Boolean(${menuAction('Save As')})`)
     await pause(150)

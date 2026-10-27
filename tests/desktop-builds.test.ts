@@ -53,7 +53,7 @@ test('default Windows packaging still builds separate x64 and ARM64 installers',
 })
 
 test('artifact names accept branch builds and match the release download pattern', () => {
-  const upload = workflow.jobs.package.steps.find((step: { name: string }) => step.name === 'Upload installers')
+  const upload = workflow.jobs.package.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'))
   const download = workflow.jobs.release.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/download-artifact@'))
   const render = (template: string, platform: string): string => template
     .replaceAll('${{ matrix.platform }}', platform)

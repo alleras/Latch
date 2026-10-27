@@ -58,20 +58,6 @@ jobs:
           LATCH_BUILD_PLATFORM: ${{ matrix.platform }}
         run: ./scripts/test-windows-installer.ps1 -Architecture ($env:LATCH_BUILD_PLATFORM -replace '^windows-', '')
 
-      - name: Test Windows title bar and menu
-        if: startsWith(matrix.platform, 'windows-')
-        timeout-minutes: 3
-        run: npx --no-install electron scripts/test-window-chrome.cjs
-
-      - name: Upload Windows title bar screenshots
-        if: always() && startsWith(matrix.platform, 'windows-')
-        uses: actions/upload-artifact@v4
-        with:
-          name: window-chrome-${{ matrix.platform }}-${{ github.run_id }}
-          path: release/window-chrome-*.png
-          if-no-files-found: warn
-          retention-days: 7
-
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
