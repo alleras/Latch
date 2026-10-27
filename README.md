@@ -57,7 +57,7 @@ Useful commands:
 | `npm run build` | Type-check and create production bundles in `out/` |
 | `npm run package` | Build unpacked bundles and installers for the current platform |
 | `npm run package:mac` | Build macOS DMG and ZIP artifacts |
-| `npm run package:win` | Build Windows NSIS and ZIP artifacts |
+| `npm run package:win` | Build Windows NSIS and ZIP artifacts for x64 and ARM64 |
 | `npm run package:linux` | Build Linux AppImage and tarball artifacts |
 | `npm run preview` | Preview the production Electron bundles |
 
@@ -66,6 +66,8 @@ Installer output is written to `release/`.
 ## Desktop builds
 
 The `Desktop builds` GitHub Actions workflow can be started manually from the Actions tab. It packages macOS, Windows, and Linux builds and retains them as workflow artifacts for 14 days.
+
+Windows builds include separate x64 and ARM64 installers and ZIP archives. To package just one Windows architecture locally, use `npm run package:win -- --x64` or `npm run package:win -- --arm64`.
 
 Pushing a version tag also creates a GitHub release and attaches all installers:
 
