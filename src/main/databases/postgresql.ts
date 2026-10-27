@@ -55,11 +55,15 @@ export async function getPostgresSchema(connection: PostgresConnection, database
         ORDER BY table_schema, table_name
       `),
       pool.query<{ schema_name: string; table_name: string; name: string; type: string; nullable: string; default_value: string | null }>(`
-        SELECT table_schema AS schema_name, table_name, column_name AS name,
-          data_type AS type, is_nullable AS nullable, column_default AS default_value
-        FROM information_schema.columns
-        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY table_schema, table_name, ordinal_position
+        SELECT c.table_schema AS schema_name, c.table_name, c.column_name AS name,
+          pg_catalog.format_type(a.atttypid, a.atttypmod) AS type,
+          c.is_nullable AS nullable, c.column_default AS default_value
+        FROM information_schema.columns c
+        JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
+        JOIN pg_catalog.pg_class r ON r.relnamespace = n.oid AND r.relname = c.table_name
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = r.oid AND a.attname = c.column_name
+        WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY c.table_schema, c.table_name, c.ordinal_position
       `),
       pool.query<{
         schema_name: string
@@ -196,7 +200,7 @@ export async function getPostgresSchema(connection: PostgresConnection, database
       type: table.type === 'VIEW' ? 'view' : 'table',
       columns: (columnsByRelation.get(relationKey(table.schema_name, table.name)) ?? []).map((column) => ({
         name: column.name,
-        type: column.type.toUpperCase(),
+        type: column.type,
         nullable: column.nullable === 'YES',
         primaryKey: (constraintsByRelation.get(relationKey(table.schema_name, table.name)) ?? [])
           .some((constraint) => constraint.type === 'primary-key' && constraint.columns.includes(column.name))
@@ -239,9 +243,19 @@ export async function executePostgresQuery(connection: PostgresConnection, datab
     const durationMs = performance.now() - startedAt
     const rows = serializeRows(result.rows)
     const columns = result.fields.map((field: { name: string }) => field.name)
+    // Resolve all result types in one round trip, including casts and expressions.
+    // Metadata enrichment must never turn an already executed write into a query failure.
+    const columnTypes = result.fields.length === 0 ? [] : await pool.query<{ type: string }>(`
+      SELECT pg_catalog.format_type(field.type_oid, field.modifier) AS type
+      FROM unnest($1::oid[], $2::int[]) WITH ORDINALITY AS field(type_oid, modifier, position)
+      ORDER BY field.position
+    `, [result.fields.map((field) => field.dataTypeID), result.fields.map((field) => field.dataTypeModifier)])
+      .then((metadata) => metadata.rows.map((row) => row.type))
+      .catch(() => result.fields.map(() => null))
     const affected = result.rowCount ?? 0
     return {
       columns,
+      columnTypes,
       rows,
       rowCount: columns.length ? rows.length : affected,
       durationMs,

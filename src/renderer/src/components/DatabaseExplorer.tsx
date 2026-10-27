@@ -423,6 +423,7 @@ const DatabaseObjectNode = memo(function DatabaseObjectNode({ object, schemaName
                     : <ViewColumnRounded sx={{ fontSize: SIDEBAR_SIZE.detailIcon, mr: 0.6 }} />}
                   name={column.name}
                   label={column.type}
+                  hoverDetails={column.type}
                 />
               ))}
             </DetailFolder>

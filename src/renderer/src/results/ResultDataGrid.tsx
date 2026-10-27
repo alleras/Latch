@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, type Key, type MouseEvent as ReactMouseEvent } from 'react'
-import { Checkbox } from '@mui/material'
+import { Checkbox, Tooltip } from '@mui/material'
 import {
   Cell,
   DataGrid,
@@ -148,6 +148,11 @@ export const ResultDataGrid = memo(function ResultDataGrid({
     const dataColumns = result.columns.map<Column<ResultRow>>((columnName, columnIndex) => ({
       key: `${DATA_COLUMN_PREFIX}${columnIndex}`,
       name: columnName,
+      renderHeaderCell: () => (
+        <Tooltip title={result.columnTypes?.[columnIndex] ?? 'Data type unavailable'} enterDelay={350} describeChild>
+          <span className="latch-result-column-header">{columnName}</span>
+        </Tooltip>
+      ),
       width: automaticWidths[columnIndex],
       minWidth: 64,
       resizable: true,
@@ -163,7 +168,7 @@ export const ResultDataGrid = memo(function ResultDataGrid({
     }))
 
     return [selectColumn, ...dataColumns]
-  }, [automaticWidths, onRowSelection, result.columns])
+  }, [automaticWidths, onRowSelection, result.columns, result.columnTypes])
 
   const renderers = useMemo<Renderers<ResultRow, unknown>>(() => ({
     renderCell: (key: Key, props: CellRendererProps<ResultRow, unknown>) => {
