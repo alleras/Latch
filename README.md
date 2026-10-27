@@ -19,6 +19,7 @@ The project is an early MVP. It prioritizes a fast query workflow, a compact dat
 - Discover databases visible to the configured login
 - Browse schemas, tables, views, columns, stored procedures, functions, and triggers where supported
 - Open database-specific query tabs and restore their SQL and selected databases between launches
+- Open `.sql` files into tabs, save and save-as from the File menu, with unsaved-change prompts; files keep their encoding (UTF-8, UTF-8 with BOM, UTF-16, or Windows-1252)
 - Edit SQL with Monaco and run the current selection or full query with `Cmd/Ctrl + Enter`
 - Inspect virtualized query results without loading every row into the DOM
 - Select and copy cells or rows, with or without column headers
@@ -52,6 +53,7 @@ Useful commands:
 | --- | --- |
 | `npm run dev` | Start Electron with the development server |
 | `npm run typecheck` | Type-check the main, preload, shared, and renderer code |
+| `npm test` | Run the unit tests in `tests/` with Node's built-in test runner |
 | `npm run build` | Type-check and create production bundles in `out/` |
 | `npm run package` | Build unpacked bundles and installers for the current platform |
 | `npm run package:mac` | Build macOS DMG and ZIP artifacts |
@@ -98,6 +100,8 @@ Adding a provider means registering its definition and implementing connection t
 - Connection definitions are stored under Electron's platform-specific application data directory.
 - Server passwords are encrypted with Electron `safeStorage` before being written to disk.
 - Query drafts, tab state, panel layouts, and appearance settings are stored in renderer local storage.
+- Unsaved edits to open `.sql` files are backed up under the application data directory until saved or discarded, so they survive a relaunch at any file size.
+- The renderer can read and write only files picked in an open or save dialog. The list of those files is kept under the application data directory so restored tabs can reopen them.
 - Credentials are kept out of renderer-facing connection objects.
 - Local database files and environment files are ignored by Git to reduce the chance of committing sensitive data.
 

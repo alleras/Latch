@@ -1,4 +1,5 @@
-import { clipboard, dialog, ipcMain } from 'electron'
+import { app, clipboard, dialog, ipcMain } from 'electron'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { ServerConnectionInput } from '../shared/types'
 import {
@@ -10,7 +11,96 @@ import {
   removeConnection,
   toPublicConnection
 } from './connections'
+import {
+  DRAFT_BACKUP_DIRECTORY,
+  deleteDraftBackup,
+  pruneDraftBackups,
+  readDraftBackup,
+  writeDraftBackup,
+  writeDraftBackupSync
+} from './draft-backups'
+import { createFileAccess } from './file-access'
 import { closeProviderConnection, executeProviderQuery, getProviderSchema, listProviderDatabases, providers, testProviderConnection } from './providers'
+import { isSqlFileEncoding, readSqlFile, writeSqlFile } from './sql-files'
+
+/** File under the application data directory listing the files the user picked in a dialog. */
+const FILE_ACCESS_STORE = 'file-access.json'
+
+const SQL_FILE_FILTERS = [
+  { name: 'SQL files', extensions: ['sql'] },
+  { name: 'All files', extensions: ['*'] }
+]
+
+function requireText(value: unknown, message: string): string {
+  if (typeof value !== 'string') throw new Error(message)
+  return value
+}
+
+function requireTextList(value: unknown, message: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) throw new Error(message)
+  return value
+}
+
+function registerFileIpc(): void {
+  const draftDirectory = (): string => join(app.getPath('userData'), DRAFT_BACKUP_DIRECTORY)
+  // The renderer reads and writes files by path only after the user picked them in one of these dialogs.
+  const fileAccess = createFileAccess(join(app.getPath('userData'), FILE_ACCESS_STORE))
+
+  ipcMain.handle('files:open-sql', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Open SQL file',
+      properties: ['openFile', 'multiSelections'],
+      filters: SQL_FILE_FILTERS
+    })
+    if (result.canceled) return []
+    return Promise.all(result.filePaths.map((path) => readSqlFile(fileAccess.grant(path))))
+  })
+
+  ipcMain.handle('files:read-sql', (_event, path: unknown) => readSqlFile(fileAccess.check(requireText(path, 'File path must be text.'))))
+
+  ipcMain.handle('files:write-sql', (_event, path: unknown, content: unknown, encoding: unknown) => {
+    if (!isSqlFileEncoding(encoding)) throw new Error('Unknown file encoding.')
+    return writeSqlFile(
+      fileAccess.check(requireText(path, 'File path must be text.')),
+      requireText(content, 'File content must be text.'),
+      encoding
+    )
+  })
+
+  ipcMain.handle('files:retain-access', (_event, paths: unknown) => fileAccess.retain(requireTextList(paths, 'File paths must be text.')))
+
+  ipcMain.handle('files:choose-save-path', async (_event, defaultPath: unknown) => {
+    const result = await dialog.showSaveDialog({
+      title: 'Save SQL file',
+      defaultPath: requireText(defaultPath, 'Default path must be text.'),
+      filters: [SQL_FILE_FILTERS[0]]
+    })
+    return result.canceled || !result.filePath ? null : fileAccess.grant(result.filePath)
+  })
+
+  ipcMain.handle('drafts:write', (_event, tabId: unknown, content: unknown) => writeDraftBackup(
+    draftDirectory(),
+    requireText(tabId, 'Draft id must be text.'),
+    requireText(content, 'Draft content must be text.')
+  ))
+
+  ipcMain.on('drafts:write-sync', (event, tabId: unknown, content: unknown) => {
+    try {
+      writeDraftBackupSync(draftDirectory(), requireText(tabId, 'Draft id must be text.'), requireText(content, 'Draft content must be text.'))
+      event.returnValue = true
+    } catch (error) {
+      console.error('Failed to write draft backup.', error)
+      event.returnValue = false
+    }
+  })
+
+  ipcMain.handle('drafts:read', (_event, tabId: unknown) => readDraftBackup(draftDirectory(), requireText(tabId, 'Draft id must be text.')))
+  ipcMain.handle('drafts:delete', (_event, tabId: unknown) => deleteDraftBackup(draftDirectory(), requireText(tabId, 'Draft id must be text.')))
+  ipcMain.handle('drafts:prune', (_event, keepTabIds: unknown) => pruneDraftBackups(
+    draftDirectory(),
+    requireTextList(keepTabIds, 'Draft ids must be text.')
+  ))
+}
 
 export function registerIpc(): void {
   ipcMain.handle('providers:list', () => providers)
@@ -19,6 +109,7 @@ export function registerIpc(): void {
     if (typeof text !== 'string') throw new Error('Clipboard content must be text.')
     clipboard.writeText(text)
   })
+  registerFileIpc()
 
   ipcMain.handle('connections:open', async () => {
     const result = await dialog.showOpenDialog({

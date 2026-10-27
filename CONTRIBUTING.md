@@ -6,6 +6,7 @@
 2. Install dependencies with `npm ci`.
 3. Start the application with `npm run dev`.
 4. Run `npm run build` before submitting a change.
+5. Run `npm test` for the unit tests. They use Node's built-in test runner against the pure helper modules, so no test framework is needed.
 
 ## Code guidelines
 
