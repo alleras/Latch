@@ -239,9 +239,8 @@ function App({ settings, onSettingsChange }: AppProps) {
             {connections.length === 0 && tabs.length === 0 ? (
               <Stack sx={{ height: '100%', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at 50% 44%, rgba(201,245,95,.055), transparent 34%)' }}>
                 <Box sx={{ filter: 'drop-shadow(0 24px 40px rgba(0,0,0,.45))' }}><LatchMark size={62} /></Box>
-                <Typography variant="overline" color="primary.main" sx={{ mt: 3 }}>Your SQL workbench</Typography>
-                <Typography variant="h2" align="center" sx={{ mt: 0.5, fontSize: { xs: 38, lg: 54 }, fontWeight: 500, lineHeight: 1, letterSpacing: '-.045em' }}>Every database.<br /><Box component="span" sx={{ color: 'primary.main', fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400 }}>One close connection.</Box></Typography>
-                <Typography variant="body2" align="center" color="text.secondary" sx={{ mt: 2, maxWidth: 430, lineHeight: 1.7 }}>Explore database objects and run queries across PostgreSQL, MySQL, SQL Server, Azure SQL, and SQLite.</Typography>
+                <Typography variant="h2" align="center" sx={{ mt: 3, fontSize: { xs: 28, lg: 36 }, fontWeight: 500, lineHeight: 1.2, letterSpacing: '-.025em' }}>Connect to a database</Typography>
+                <Typography variant="body2" align="center" color="text.secondary" sx={{ mt: 1.5, maxWidth: 430, lineHeight: 1.7 }}>Add a connection to browse tables and run SQL queries.</Typography>
                 <Button variant="contained" size="large" startIcon={<AddRounded />} onClick={openConnectionDialog} sx={{ mt: 3 }}>Add connection</Button>
               </Stack>
             ) : (
