@@ -13,9 +13,15 @@ const { configureBuildCommand, createYargs, normalizeOptions } = require('electr
 const { computeArchToTargetNamesMap } = require('app-builder-lib/out/targets/targetFactory.js')
 const { Platform } = require('app-builder-lib')
 const { Arch } = require('builder-util')
+const { compute7zCompressArgs } = require('app-builder-lib/out/targets/archive.js')
 const config = load(readFileSync(new URL('../electron-builder.yml', import.meta.url), 'utf8'))
 const workflow = load(readFileSync(new URL('../.github/workflows/desktop-builds.yml', import.meta.url), 'utf8'))
 const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+
+test('NSIS payload compression uses a filter supported by its install-time extractor', () => {
+  const args = compute7zCompressArgs('7z', { installTimeDecodable: true })
+  assert.ok(args.includes('-mf=BCJ'), 'ARM64 executables must not use the unsupported automatic ARM64 filter')
+})
 
 function windowsTargets(scriptName: string): [string, string[]][] {
   const command = scripts[scriptName].split(' && ').find((part: string) => part.startsWith('electron-builder '))

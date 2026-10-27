@@ -69,6 +69,8 @@ Installer output is written to `release/`.
 
 The `Desktop builds` GitHub Actions workflow can be started manually from the Actions tab. It packages macOS, Windows, and Linux builds and retains them as workflow artifacts for 14 days.
 
+Windows jobs silently install the generated package on a runner with the matching architecture, verify the executable and runtime files, and run the installed executable before uploading artifacts.
+
 Windows builds include separate x64 and ARM64 installers and ZIP archives. To package just one Windows architecture locally, use `npm run package:win:x64` or `npm run package:win:arm64`. Each command passes explicit targets so electron-builder does not expand the build to both architectures from the configuration.
 
 Pushing a version tag also creates a GitHub release and attaches all installers:
