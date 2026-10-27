@@ -25,7 +25,7 @@ jobs:
             runner: windows-latest
             command: npm run package:win:x64
           - platform: windows-arm64
-            runner: windows-latest
+            runner: windows-11-arm
             command: npm run package:win:arm64
           - platform: linux
             runner: ubuntu-latest
@@ -49,6 +49,14 @@ jobs:
 
       - name: Build installer
         run: ${{ matrix.command }}
+
+      - name: Test Windows installation
+        if: startsWith(matrix.platform, 'windows-')
+        timeout-minutes: 5
+        shell: pwsh
+        env:
+          LATCH_BUILD_PLATFORM: ${{ matrix.platform }}
+        run: ./scripts/test-windows-installer.ps1 -Architecture ($env:LATCH_BUILD_PLATFORM -replace '^windows-', '')
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
