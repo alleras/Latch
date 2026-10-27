@@ -1,5 +1,9 @@
 # Latch Engineering Guidance
 
+## Tooling rules
+
+- Do not use Qodo tools, CLI commands, or skills for this project. Use local code inspection and checks for reviews.
+
 ## Performance rules
 
 - Treat database metadata and query results as unbounded collections. Do not design collection UI around small development fixtures.
