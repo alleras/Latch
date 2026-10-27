@@ -53,7 +53,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: latch-${{ matrix.platform }}-${{ github.ref_name }}
+          name: latch-${{ matrix.platform }}-${{ github.run_id }}
           path: |
             release/*.dmg
             release/*.zip
@@ -75,7 +75,7 @@ jobs:
       - name: Download installers
         uses: actions/download-artifact@v4
         with:
-          pattern: latch-*-${{ github.ref_name }}
+          pattern: latch-*-${{ github.run_id }}
           path: artifacts
 
       - name: Validate assets and create release

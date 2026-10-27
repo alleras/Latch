@@ -46,6 +46,22 @@ test('default Windows packaging still builds separate x64 and ARM64 installers',
   assert.ok(config.win.artifactName.includes('${arch}'))
 })
 
+test('artifact names accept branch builds and match the release download pattern', () => {
+  const upload = workflow.jobs.package.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'))
+  const download = workflow.jobs.release.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/download-artifact@'))
+  const render = (template: string, platform: string): string => template
+    .replaceAll('${{ matrix.platform }}', platform)
+    .replaceAll('${{ github.run_id }}', '12345')
+    .replaceAll('${{ github.ref_name }}', 'fix/release-asset-duplicates')
+  const pattern = render(download.with.pattern, '').replaceAll('*', '.*')
+  const names = workflow.jobs.package.strategy.matrix.include.map((job: { platform: string }) => render(upload.with.name, job.platform))
+  assert.equal(new Set(names).size, names.length)
+  for (const name of names) {
+    assert.doesNotMatch(name, /["<>|:*?\\/\r\n]/)
+    assert.match(name, new RegExp(`^${pattern}$`))
+  }
+})
+
 const releaseStep = workflow.jobs.release.steps.find((step: { run?: string }) => step.run?.includes('gh release create'))
 assert.ok(releaseStep, 'workflow must have a release publishing step')
 const releaseTestOptions = { skip: process.platform === 'win32' ? 'Release publishing runs on Ubuntu Bash' : false }
