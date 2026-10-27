@@ -26,6 +26,7 @@ The project is an early MVP. It prioritizes a fast query workflow, a compact dat
 - Resize result columns and application panels
 - Inspect query errors and execution messages
 - Choose light, dark, or system appearance
+- Use a themed Windows title bar and application menu with native window controls and Snap Layouts
 
 ## Development
 
@@ -46,6 +47,8 @@ Run the same validation used in CI:
 ```bash
 npm run build
 ```
+
+Windows CI also launches the built app on x64 and ARM64 to check the integrated menu, keyboard navigation, edit-command focus, window-control safe area, and both themes. Dark and light screenshots are attached to the CI run.
 
 Useful commands:
 

@@ -4,6 +4,7 @@ import { flushDraftBackups } from './draft-backups'
 import { registerIpc } from './ipc'
 import { installApplicationMenu } from './menu'
 import { closeAllProviderConnections } from './providers'
+import { attachWindowChrome, registerWindowChromeIpc, windowChromeOptions } from './window-chrome'
 
 const windows = new Set<BrowserWindow>()
 
@@ -13,7 +14,7 @@ function createWindow(): void {
     height: 920,
     minWidth: 960,
     minHeight: 640,
-    titleBarStyle: 'hiddenInset',
+    ...windowChromeOptions(process.platform),
     backgroundColor: '#0e0f11',
     show: false,
     webPreferences: {
@@ -22,6 +23,8 @@ function createWindow(): void {
       sandbox: true
     }
   })
+
+  attachWindowChrome(window)
 
   windows.add(window)
   window.on('closed', () => windows.delete(window))
@@ -51,6 +54,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerIpc()
+  registerWindowChromeIpc()
   installApplicationMenu()
   createWindow()
   app.on('activate', () => {

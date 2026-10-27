@@ -28,6 +28,9 @@ export function buildMenuTemplate(platform: NodeJS.Platform, send: SendMenuComma
     fileMenu,
     { role: 'editMenu' },
     { role: 'viewMenu' },
-    { role: 'windowMenu' }
+    // Ctrl+W belongs to query tabs; Alt+F4 remains the Windows close-window shortcut.
+    platform === 'win32'
+      ? { role: 'windowMenu', submenu: [{ role: 'minimize' }, { role: 'close', accelerator: 'Alt+F4' }] }
+      : { role: 'windowMenu' }
   ]
 }

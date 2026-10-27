@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AddRounded from '@mui/icons-material/AddRounded'
-import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
 import StorageRounded from '@mui/icons-material/StorageRounded'
 import { Box, Button, IconButton, Stack, Tooltip, Typography } from '@mui/material'
@@ -19,6 +18,7 @@ import { useConnectionManager } from './features/connections/useConnectionManage
 import { useDatabaseExplorer } from './features/database-explorer/useDatabaseExplorer'
 import { QueryWorkspace } from './features/query-workspace/QueryWorkspace'
 import { useQueryWorkspace, type ConnectionTarget } from './features/query-workspace/useQueryWorkspace'
+import { AppTitleBar } from './features/window-chrome/AppTitleBar'
 import { connectionDatabaseKey } from './query-tabs'
 import type { AppSettings } from './settings'
 
@@ -202,14 +202,7 @@ function App({ settings, onSettingsChange }: AppProps) {
 
   return (
     <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', gridTemplateRows: '46px minmax(0, 1fr)', bgcolor: 'background.default' }}>
-      <Stack component="header" direction="row" sx={{ gridColumn: '1 / -1', alignItems: 'center', px: 1.25, pl: 9.5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'var(--latch-shell)', WebkitAppRegion: 'drag', userSelect: 'none' }}>
-        <Box sx={{ mr: 1 }}><LatchMark /></Box>
-        <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: '.15em' }}>LATCH</Typography>
-        <Box sx={{ height: 16, mx: 1.25, borderLeft: '1px solid', borderColor: 'divider' }} />
-        <Typography variant="caption" color="text.secondary">{displayConnection?.name ?? 'SQL workspace'}</Typography>
-        <Box sx={{ flex: 1 }} />
-        <IconButton size="small" sx={{ WebkitAppRegion: 'no-drag' }}><MoreHorizRounded fontSize="small" /></IconButton>
-      </Stack>
+      <AppTitleBar connectionName={displayConnection?.name} />
 
       <Stack component="nav" sx={{ gridColumn: 1, gridRow: 2, alignItems: 'center', py: 1, borderRight: '1px solid', borderColor: 'divider', bgcolor: 'var(--latch-shell)' }}>
         <Tooltip title="Data sources" placement="right"><IconButton color="primary" sx={{ bgcolor: 'rgba(201,245,95,.08)' }}><StorageRounded fontSize="small" /></IconButton></Tooltip>
