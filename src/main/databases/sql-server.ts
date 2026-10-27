@@ -4,6 +4,7 @@ import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, Sche
 import type { StoredServerConnection } from '../types'
 import { pushGrouped, relationKey, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
+import { sqlServerResultType, sqlServerTypeDeclaration } from './column-types'
 
 type SqlServerConnection = StoredServerConnection & { provider: 'sqlserver' | 'azuresql' }
 
@@ -70,9 +71,11 @@ export async function getSqlServerSchema(connection: SqlServerConnection, databa
         FROM INFORMATION_SCHEMA.TABLES
         ORDER BY TABLE_SCHEMA, TABLE_NAME
       `),
-      pool.request().query<{ schemaName: string; tableName: string; name: string; type: string; nullable: string }>(`
+      pool.request().query<{ schemaName: string; tableName: string; name: string; type: string; nullable: string; length: number | null; precision: number | null; scale: number | null }>(`
         SELECT TABLE_SCHEMA AS schemaName, TABLE_NAME AS tableName, COLUMN_NAME AS name,
-          DATA_TYPE AS type, IS_NULLABLE AS nullable
+          DATA_TYPE AS type, IS_NULLABLE AS nullable, CHARACTER_MAXIMUM_LENGTH AS length,
+          NUMERIC_PRECISION AS [precision],
+          CASE WHEN DATA_TYPE IN ('time', 'datetime2', 'datetimeoffset') THEN DATETIME_PRECISION ELSE NUMERIC_SCALE END AS scale
         FROM INFORMATION_SCHEMA.COLUMNS
         ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
       `),
@@ -237,7 +240,7 @@ export async function getSqlServerSchema(connection: SqlServerConnection, databa
       type: table.type,
       columns: (columnsByRelation.get(relationKey(table.schemaName, table.name)) ?? []).map((column) => ({
         name: column.name,
-        type: column.type.toUpperCase(),
+        type: sqlServerTypeDeclaration(column),
         nullable: column.nullable === 'YES',
         primaryKey: (constraintsByRelation.get(relationKey(table.schemaName, table.name)) ?? [])
           .some((constraint) => constraint.type === 'primary-key' && constraint.columns.includes(column.name))
@@ -282,6 +285,7 @@ export async function executeSqlServerQuery(connection: SqlServerConnection, dat
     const affected = response.rowsAffected.reduce((total, count) => total + count, 0)
     return {
       columns,
+      columnTypes: columns.map((name) => sqlServerResultType(response.recordset.columns[name])),
       rows,
       rowCount: rows.length || affected,
       durationMs,

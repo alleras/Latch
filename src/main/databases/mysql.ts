@@ -4,6 +4,7 @@ import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, Sche
 import type { StoredServerConnection } from '../types'
 import { pushGrouped, relationKey, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
+import { mysqlResultType, mysqlTypeDeclaration } from './column-types'
 
 type MySqlConnection = StoredServerConnection & { provider: 'mysql' }
 
@@ -52,7 +53,7 @@ export async function getMySqlSchema(connection: MySqlConnection, database: stri
         ORDER BY TABLE_NAME
       `, [database]),
       pool.execute(`
-        SELECT TABLE_NAME AS tableName, COLUMN_NAME AS name, DATA_TYPE AS type,
+        SELECT TABLE_NAME AS tableName, COLUMN_NAME AS name, COLUMN_TYPE AS type,
           IS_NULLABLE AS nullable, COLUMN_DEFAULT AS defaultValue
         FROM information_schema.columns
         WHERE TABLE_SCHEMA = ?
@@ -176,7 +177,7 @@ export async function getMySqlSchema(connection: MySqlConnection, database: stri
       type: table.type === 'VIEW' ? 'view' : 'table',
       columns: (columnsByRelation.get(relationKey(undefined, table.name)) ?? []).map((column) => ({
         name: column.name,
-        type: column.type.toUpperCase(),
+        type: mysqlTypeDeclaration(column.type),
         nullable: column.nullable === 'YES',
         primaryKey: (constraintsByRelation.get(relationKey(undefined, table.name)) ?? [])
           .some((constraint) => constraint.type === 'primary-key' && constraint.columns.includes(column.name))
@@ -202,6 +203,36 @@ export async function getMySqlSchema(connection: MySqlConnection, database: stri
   })
 }
 
+async function resultColumnTypes(pool: Pool, fields: FieldPacket[]): Promise<(string | null)[]> {
+  const identity = (database: string, table: string, column: string) => JSON.stringify([database, table, column])
+  const sources = new Map<string, [string, string, string]>()
+  for (const field of fields) {
+    if (field.db && field.orgTable && field.orgName) {
+      sources.set(identity(field.db, field.orgTable, field.orgName), [field.db, field.orgTable, field.orgName])
+    }
+  }
+  const declarations = new Map<string, string>()
+  const entries = [...sources.values()]
+  // Bound placeholder counts for wide result sets; resolve aliases by origin, never by display name.
+  for (let offset = 0; offset < entries.length; offset += 200) {
+    const batch = entries.slice(offset, offset + 200)
+    try {
+      const [rows] = await pool.query(`
+        SELECT TABLE_SCHEMA AS db, TABLE_NAME AS tableName, COLUMN_NAME AS name, COLUMN_TYPE AS type
+        FROM information_schema.columns
+        WHERE (TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME) IN (${batch.map(() => '(?, ?, ?)').join(', ')})
+      `, batch.flat())
+      for (const row of rows as Array<{ db: string; tableName: string; name: string; type: string }>) {
+        declarations.set(identity(row.db, row.tableName, row.name), mysqlTypeDeclaration(row.type))
+      }
+    } catch {
+      // A metadata permission failure must not fail an already executed query.
+      break
+    }
+  }
+  return fields.map((field) => declarations.get(identity(field.db ?? '', field.orgTable, field.orgName)) ?? mysqlResultType(field))
+}
+
 export async function executeMySqlQuery(connection: MySqlConnection, database: string, query: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
@@ -213,6 +244,7 @@ export async function executeMySqlQuery(connection: MySqlConnection, database: s
     const affected = isRows ? rows.length : Number((result as { affectedRows?: number }).affectedRows ?? 0)
     return {
       columns,
+      columnTypes: await resultColumnTypes(pool, fields ?? []),
       rows,
       rowCount: affected,
       durationMs,

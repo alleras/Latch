@@ -118,6 +118,13 @@ body,
   outline: none;
 }
 
+.latch-result-column-header {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .latch-result-row-number-cell {
   padding-inline: 7px !important;
   background: var(--latch-grid-gutter) !important;

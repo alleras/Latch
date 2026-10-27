@@ -96,6 +96,7 @@ export function ConnectionDialog({ open, providers, busy, error, onClose, onOpen
             return (
               <ButtonBase
                 key={provider.id}
+                aria-pressed={active}
                 onClick={() => selectProvider(provider)}
                 sx={{
                   minHeight: 70,
@@ -118,7 +119,6 @@ export function ConnectionDialog({ open, providers, busy, error, onClose, onOpen
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>{provider.label}</Typography>
                   <Typography variant="caption" color="text.secondary" noWrap>{provider.description}</Typography>
                 </Box>
-                {active && <Chip label="Selected" size="small" sx={{ height: 21, fontSize: 10, bgcolor: `${color}18`, color }} />}
               </ButtonBase>
             )
           })}

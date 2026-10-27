@@ -197,10 +197,12 @@ export function executeSqliteQuery(connection: SqliteConnection, query: string):
   return sessions.run(connection.id, connection.path, () => new DatabaseSync(connection.path), (database) => {
     const startedAt = performance.now()
     const statement = database.prepare(query)
-    const columns = statement.columns().map((column) => column.name)
+    const metadata = statement.columns()
+    const columns = metadata.map((column) => column.name)
+    const columnTypes = metadata.map((column) => column.type)
     if (columns.length > 0) {
       const rows = serializeRows(statement.all() as Record<string, unknown>[])
-      return { columns, rows, rowCount: rows.length, durationMs: performance.now() - startedAt }
+      return { columns, columnTypes, rows, rowCount: rows.length, durationMs: performance.now() - startedAt }
     }
 
     const result = statement.run()

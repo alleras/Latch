@@ -97,6 +97,7 @@ const colorsByMode = {
 
 export function createLatchTheme(mode: PaletteMode) {
   const colors = colorsByMode[mode]
+  const inputFontSize = 13
 
   return createTheme({
     cssVariables: true,
@@ -173,11 +174,14 @@ export function createLatchTheme(mode: PaletteMode) {
       MuiTextField: {
         defaultProps: { size: 'small', variant: 'outlined' }
       },
+      MuiInputLabel: {
+        styleOverrides: { outlined: { fontSize: inputFontSize } }
+      },
       MuiOutlinedInput: {
         styleOverrides: {
           root: {
             background: colors.editor,
-            fontSize: 13,
+            fontSize: inputFontSize,
             '& fieldset': { borderColor: colors.divider },
             '&:hover fieldset': { borderColor: colors.secondaryText }
           }

@@ -105,6 +105,8 @@ export interface DatabaseObject {
 
 export interface QueryResult {
   columns: string[]
+  /** Full database type declarations, aligned with columns by ordinal (including aliases). */
+  columnTypes?: (string | null)[]
   rows: Record<string, unknown>[]
   rowCount: number
   durationMs: number
