@@ -61,3 +61,9 @@ test('Edit, View and Window roles are present', () => {
   assert.deepEqual(labels(buildMenuTemplate('linux', noop)).slice(1), ['editMenu', 'viewMenu', 'windowMenu'])
   assert.deepEqual(labels(buildMenuTemplate('darwin', noop)).slice(2), ['editMenu', 'viewMenu', 'windowMenu'])
 })
+
+test('Windows close-window uses Alt+F4 so Ctrl+W remains available for query tabs', () => {
+  const windowMenu = buildMenuTemplate('win32', noop).find((item) => item.role === 'windowMenu')
+  const items = windowMenu?.submenu as MenuItemConstructorOptions[]
+  assert.equal(items.find((item) => item.role === 'close')?.accelerator, 'Alt+F4')
+})

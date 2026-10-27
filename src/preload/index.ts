@@ -3,6 +3,14 @@ import type { LatchApi, MenuCommand } from '../shared/types'
 
 const api: LatchApi = {
   platform: process.platform,
+  getApplicationMenu: () => ipcRenderer.invoke('menu:read'),
+  executeMenuItem: (id) => ipcRenderer.invoke('menu:execute', id),
+  setTitleBarColors: (background, foreground) => ipcRenderer.invoke('window:titlebar-colors', background, foreground),
+  onMenuBarFocus: (callback) => {
+    const listener = (_event: unknown, label: string | null): void => callback(label)
+    ipcRenderer.on('menu:focus', listener)
+    return () => ipcRenderer.removeListener('menu:focus', listener)
+  },
   openSqlFiles: () => ipcRenderer.invoke('files:open-sql'),
   readSqlFile: (path) => ipcRenderer.invoke('files:read-sql', path),
   writeSqlFile: (path, content, encoding) => ipcRenderer.invoke('files:write-sql', path, content, encoding),

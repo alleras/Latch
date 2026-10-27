@@ -16,6 +16,11 @@ body,
   box-sizing: border-box;
 }
 
+.latch-titlebar-windows .latch-titlebar-content {
+  margin-left: env(titlebar-area-x, 0px);
+  width: env(titlebar-area-width, calc(100% - 138px));
+}
+
 .resize-handle {
   position: relative;
   z-index: 2;

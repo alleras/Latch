@@ -113,6 +113,16 @@ export interface QueryResult {
 
 export type MenuCommand = 'new-query' | 'open-file' | 'save' | 'save-as'
 
+export interface ApplicationMenuItem {
+  id: number
+  label: string
+  type: 'normal' | 'separator' | 'checkbox' | 'radio' | 'submenu'
+  enabled: boolean
+  checked: boolean
+  accelerator?: string
+  submenu?: ApplicationMenuItem[]
+}
+
 /** How a file's text is stored on disk. Saving writes the same encoding back; UTF-16 always has a byte order mark. */
 export type SqlFileEncoding = 'utf8' | 'utf8bom' | 'utf16le' | 'utf16be' | 'windows1252'
 
@@ -125,6 +135,10 @@ export interface SqlFile {
 export interface LatchApi {
   /** The main process's `process.platform`, for platform-specific rules such as path case. */
   platform: string
+  getApplicationMenu: () => Promise<ApplicationMenuItem[]>
+  executeMenuItem: (id: number) => Promise<void>
+  onMenuBarFocus: (callback: (label: string | null) => void) => () => void
+  setTitleBarColors: (background: string, foreground: string) => Promise<void>
   listProviders: () => Promise<ProviderDefinition[]>
   listConnections: () => Promise<Connection[]>
   openDatabase: () => Promise<Connection | null>

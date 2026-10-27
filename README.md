@@ -26,6 +26,7 @@ The project is an early MVP. It prioritizes a fast query workflow, a compact dat
 - Resize result columns and application panels
 - Inspect query errors and execution messages
 - Choose light, dark, or system appearance
+- Use a themed Windows title bar and application menu with native window controls and Snap Layouts
 
 ## Development
 
