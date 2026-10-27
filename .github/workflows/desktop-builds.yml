@@ -23,10 +23,10 @@ jobs:
             command: npm run package:mac
           - platform: windows-x64
             runner: windows-latest
-            command: npm run package:win -- --x64
+            command: npm run package:win:x64
           - platform: windows-arm64
             runner: windows-latest
-            command: npm run package:win -- --arm64
+            command: npm run package:win:arm64
           - platform: linux
             runner: ubuntu-latest
             command: npm run package:linux
@@ -78,13 +78,26 @@ jobs:
           pattern: latch-*-${{ github.ref_name }}
           path: artifacts
 
-      - name: Create release
+      - name: Validate assets and create release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          mapfile -d '' files < <(find artifacts -type f -print0)
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find artifacts -type f -print0)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No release assets found."
+            exit 1
+          fi
+          duplicate_names=$(for file in "${files[@]}"; do printf '%s\n' "${file##*/}"; done | LC_ALL=C sort | uniq -d)
+          if [[ -n "$duplicate_names" ]]; then
+            echo "::error::Duplicate release asset filenames; each filename must be unique across packaging jobs."
+            printf '%s\n' "$duplicate_names"
+            exit 1
+          fi
           gh release create "$GITHUB_REF_NAME" "${files[@]}" \
             --generate-notes \
             --title "Latch $GITHUB_REF_NAME"
