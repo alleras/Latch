@@ -284,9 +284,12 @@ interface SqlServerArrayColumn {
   scale?: number
 }
 
+interface SqlServerArrayRecordset extends Array<unknown[]> {
+  columns?: SqlServerArrayColumn[]
+}
+
 interface SqlServerArrayResult {
-  recordsets?: unknown[][][]
-  columns?: SqlServerArrayColumn[][]
+  recordsets?: SqlServerArrayRecordset[]
   rowsAffected?: number[]
 }
 
@@ -296,11 +299,11 @@ export async function executeSqlServerQuery(connection: SqlServerConnection, dat
     const request = pool.request()
     request.multiple = true
     request.arrayRowMode = true
-    const response = await request.query(query) as unknown as SqlServerArrayResult
+    const response = await request.batch(query) as unknown as SqlServerArrayResult
     const durationMs = performance.now() - startedAt
     const affected = (response.rowsAffected ?? []).reduce((total, count) => total + count, 0)
-    const resultSets = (response.recordsets ?? []).map((rows, index) => {
-      const columns = response.columns?.[index] ?? []
+    const resultSets = (response.recordsets ?? []).map((rows) => {
+      const columns = rows.columns ?? []
       return {
         columns: columns.map((column) => column.name),
         columnTypes: columns.map(sqlServerResultType),
