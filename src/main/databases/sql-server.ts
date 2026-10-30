@@ -2,7 +2,7 @@ import { safeStorage } from 'electron'
 import sql from 'mssql'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
 import type { StoredServerConnection } from '../types'
-import { pushGrouped, relationKey, serializeRows } from './common'
+import { pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
 import { sqlServerResultType, sqlServerTypeDeclaration } from './column-types'
 
@@ -10,7 +10,7 @@ type SqlServerConnection = StoredServerConnection & { provider: 'sqlserver' | 'a
 
 const sessions = new DatabaseSessionCache<sql.ConnectionPool>((pool) => pool.close())
 
-function config(connection: SqlServerConnection, database = 'master'): sql.config {
+function config(connection: SqlServerConnection, database = 'master', max = 5): sql.config {
   return {
     server: connection.host,
     port: connection.port,
@@ -20,7 +20,7 @@ function config(connection: SqlServerConnection, database = 'master'): sql.confi
     connectionTimeout: 12_000,
     requestTimeout: 30_000,
     pool: {
-      max: 5,
+      max,
       min: 0,
       idleTimeoutMillis: 5 * 60 * 1000
     },
@@ -32,17 +32,18 @@ function config(connection: SqlServerConnection, database = 'master'): sql.confi
   }
 }
 
-function createPool(connection: SqlServerConnection, database: string): Promise<sql.ConnectionPool> {
-  const pool = new sql.ConnectionPool(config(connection, database))
+function createPool(connection: SqlServerConnection, database: string, max = 5): Promise<sql.ConnectionPool> {
+  const pool = new sql.ConnectionPool(config(connection, database, max))
   pool.on('error', (error) => console.error(`SQL Server pool error for ${connection.name}/${database}.`, error))
   return pool.connect()
 }
 
-function withPool<T>(connection: SqlServerConnection, database: string, task: (pool: sql.ConnectionPool) => Promise<T>): Promise<T> {
+function withPool<T>(connection: SqlServerConnection, database: string, task: (pool: sql.ConnectionPool) => Promise<T>, sessionId?: string): Promise<T> {
+  const sessionKey = sessionId ? JSON.stringify([database, sessionId]) : database
   return sessions.run(
     connection.id,
-    database,
-    () => createPool(connection, database),
+    sessionKey,
+    () => createPool(connection, database, sessionId ? 1 : 5),
     task
   )
 }
@@ -275,23 +276,49 @@ export async function getSqlServerSchema(connection: SqlServerConnection, databa
   })
 }
 
-export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string): Promise<QueryResult> {
+interface SqlServerArrayColumn {
+  name: string
+  type: unknown
+  length: number
+  precision?: number
+  scale?: number
+}
+
+interface SqlServerArrayRecordset extends Array<unknown[]> {
+  columns?: SqlServerArrayColumn[]
+}
+
+interface SqlServerArrayResult {
+  recordsets?: SqlServerArrayRecordset[]
+  rowsAffected?: number[]
+}
+
+export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
-    const response = await pool.request().query(query)
+    const request = pool.request()
+    request.multiple = true
+    request.arrayRowMode = true
+    const response = await request.batch(query) as unknown as SqlServerArrayResult
     const durationMs = performance.now() - startedAt
-    const rows = serializeRows((response.recordset ?? []) as Record<string, unknown>[])
-    const columns = response.recordset ? Object.keys(response.recordset.columns) : []
-    const affected = response.rowsAffected.reduce((total, count) => total + count, 0)
+    const affected = (response.rowsAffected ?? []).reduce((total, count) => total + count, 0)
+    const resultSets = (response.recordsets ?? []).map((rows) => {
+      const columns = rows.columns ?? []
+      return {
+        columns: columns.map((column) => column.name),
+        columnTypes: columns.map(sqlServerResultType),
+        rows: serializeRows(rows),
+        rowCount: rows.length
+      }
+    })
     return {
-      columns,
-      columnTypes: columns.map((name) => sqlServerResultType(response.recordset.columns[name])),
-      rows,
-      rowCount: rows.length || affected,
+      resultSets,
       durationMs,
-      message: columns.length ? undefined : `${affected} row${affected === 1 ? '' : 's'} affected`
+      messages: resultSets.length > 0
+        ? []
+        : [affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully']
     }
-  })
+  }, sessionId)
 }
 
 export function closeSqlServerConnection(connectionId: string): Promise<void> {

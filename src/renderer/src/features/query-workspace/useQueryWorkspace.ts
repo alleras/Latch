@@ -653,7 +653,7 @@ export function useQueryWorkspace({ onSchemaChanged, explorerTarget }: UseQueryW
 
     setTabs((current) => updateQueryTab(current, tabId, { running: true, error: null }))
     try {
-      const result = await window.latch.executeQuery(connectionId, tab.database, sql)
+      const result = await window.latch.executeQuery(connectionId, tab.database, sql, tabId)
       setTabs((current) => updateQueryTab(current, tabId, { result, error: null }))
       if (mayChangeSchema(sql)) onSchemaChangedRef.current(connectionId, tab.database)
     } catch (error) {

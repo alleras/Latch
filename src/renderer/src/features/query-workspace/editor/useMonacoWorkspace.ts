@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import type { DatabaseObject } from '../../../../../shared/types'
-import { defineLatchThemes, monaco, registerSqlCompletionProviders } from './monaco-config'
+import { createSqlCatalogIndex, defineLatchThemes, monaco, registerSqlCompletionProviders } from './monaco-config'
 
 interface UseMonacoWorkspaceOptions {
   hostRef: RefObject<HTMLDivElement | null>
@@ -46,11 +46,12 @@ export function useMonacoWorkspace({
   const replacingRef = useRef(false)
   const onRunRef = useRef(onRun)
   const onQueryChangeRef = useRef(onQueryChange)
-  const schemaRef = useRef(schema)
+  const catalog = useMemo(() => createSqlCatalogIndex(schema), [schema])
+  const catalogRef = useRef(catalog)
 
   onRunRef.current = onRun
   onQueryChangeRef.current = onQueryChange
-  schemaRef.current = schema
+  catalogRef.current = catalog
 
   useLayoutEffect(() => {
     if (!hostRef.current) return
@@ -78,7 +79,8 @@ export function useMonacoWorkspace({
       tabSize: 2,
       insertSpaces: true,
       wordWrap: 'off',
-      quickSuggestions: false,
+      quickSuggestions: { other: true, comments: false, strings: false },
+      quickSuggestionsDelay: 150,
       suggestOnTriggerCharacters: true,
       suggest: { showKeywords: true, showFields: true, showClasses: true },
       scrollbar: { verticalScrollbarSize: 9, horizontalScrollbarSize: 9 }
@@ -98,7 +100,7 @@ export function useMonacoWorkspace({
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
       run: () => onRunRef.current()
     })
-    const completionProviders = registerSqlCompletionProviders(() => schemaRef.current)
+    const completionProviders = registerSqlCompletionProviders(() => catalogRef.current)
 
     return () => {
       disposed = true

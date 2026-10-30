@@ -34,7 +34,7 @@ const api: LatchApi = {
   removeConnection: (id) => ipcRenderer.invoke('connections:remove', id),
   listDatabases: (connectionId) => ipcRenderer.invoke('database:list', connectionId),
   getSchema: (connectionId, database) => ipcRenderer.invoke('database:schema', connectionId, database),
-  executeQuery: (connectionId, database, sql) => ipcRenderer.invoke('database:execute', connectionId, database, sql),
+  executeQuery: (connectionId, database, sql, sessionId) => ipcRenderer.invoke('database:execute', connectionId, database, sql, sessionId),
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   onCloseActiveTab: (callback) => {
     const listener = (): void => callback()
@@ -44,4 +44,3 @@ const api: LatchApi = {
 }
 
 contextBridge.exposeInMainWorld('latch', api)
-

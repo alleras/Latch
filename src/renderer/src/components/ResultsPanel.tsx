@@ -37,7 +37,7 @@ interface ResultsPanelProps {
   onClear: () => void
 }
 
-type ResultView = 'results' | 'messages'
+type ResultView = number | 'empty' | 'messages'
 
 function selectionModifiers(event: MouseEvent<HTMLElement>): SelectionModifiers {
   return {
@@ -47,7 +47,7 @@ function selectionModifiers(event: MouseEvent<HTMLElement>): SelectionModifiers 
 }
 
 export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear }: ResultsPanelProps) {
-  const [activeView, setActiveView] = useState<ResultView>('results')
+  const [activeView, setActiveView] = useState<ResultView>('empty')
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set())
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [copyAnchor, setCopyAnchor] = useState<HTMLElement | null>(null)
@@ -56,13 +56,18 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
   const rowAnchorRef = useRef<number | null>(null)
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const resultSets = result?.resultSets ?? []
+  const displayedView: ResultView = typeof activeView === 'number' && !resultSets[activeView]
+    ? (resultSets.length > 0 ? 0 : result || error ? 'messages' : 'empty')
+    : activeView
+  const activeResult = typeof displayedView === 'number' ? resultSets[displayedView] ?? null : null
   const selectedCellsInOrder = useMemo(() => selectedCellPositions(selectedCells), [selectedCells])
   const messageSummary = useMemo(() => queryMessageSummary(result, error), [error, result])
   const selectedRowIndexes = useMemo(
-    () => [...selectedRows].filter((index) => index < (result?.rows.length ?? 0)).sort((left, right) => left - right),
-    [result, selectedRows]
+    () => [...selectedRows].filter((index) => index < (activeResult?.rows.length ?? 0)).sort((left, right) => left - right),
+    [activeResult, selectedRows]
   )
-  const canCopyResults = Boolean(result?.columns.length)
+  const canCopyResults = Boolean(activeResult?.columns.length)
 
   useEffect(() => {
     setSelectedCells(new Set())
@@ -70,11 +75,12 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
     setCopyAnchor(null)
     cellAnchorRef.current = null
     rowAnchorRef.current = null
-  }, [result])
+  }, [activeResult])
 
   useEffect(() => {
-    if (error || result?.message) setActiveView('messages')
-    else if (result) setActiveView('results')
+    if (error || (result && result.resultSets.length === 0)) setActiveView('messages')
+    else if (result?.resultSets.length) setActiveView(0)
+    else setActiveView('empty')
   }, [error, result])
 
   useEffect(() => () => {
@@ -101,12 +107,12 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
   }
 
   const copyCells = (includeHeaders = false): void => {
-    if (!result || selectedCellsInOrder.length === 0) return
+    if (!activeResult || selectedCellsInOrder.length === 0) return
 
     const onlyCell = selectedCellsInOrder.length === 1 ? selectedCellsInOrder[0] : null
     const text = onlyCell && !includeHeaders
-      ? resultValueText(result.rows[onlyCell.rowIndex]?.[result.columns[onlyCell.columnIndex]])
-      : cellsToTsv(result.columns, result.rows, selectedCellsInOrder, includeHeaders)
+      ? resultValueText(activeResult.rows[onlyCell.rowIndex]?.[onlyCell.columnIndex])
+      : cellsToTsv(activeResult.columns, activeResult.rows, selectedCellsInOrder, includeHeaders)
     const count = selectedCellsInOrder.length
     void writeClipboard(
       text,
@@ -115,20 +121,20 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
   }
 
   const copyRows = (rowIndexes: number[], includeHeaders: boolean): void => {
-    if (!result) return
-    const rows = rowIndexes.map((index) => result.rows[index]).filter((row) => row !== undefined)
+    if (!activeResult) return
+    const rows = rowIndexes.map((index) => activeResult.rows[index]).filter((row) => row !== undefined)
     const count = rows.length
     void writeClipboard(
-      rowsToTsv(result.columns, rows, includeHeaders),
+      rowsToTsv(activeResult.columns, rows, includeHeaders),
       `${count} row${count === 1 ? '' : 's'} copied${includeHeaders ? ' with headers' : ''}`
     )
   }
 
   const copyAllRows = (includeHeaders: boolean): void => {
-    if (!result) return
+    if (!activeResult) return
     void writeClipboard(
-      rowsToTsv(result.columns, result.rows, includeHeaders),
-      `${result.rows.length} row${result.rows.length === 1 ? '' : 's'} copied${includeHeaders ? ' with headers' : ''}`
+      rowsToTsv(activeResult.columns, activeResult.rows, includeHeaders),
+      `${activeResult.rows.length} row${activeResult.rows.length === 1 ? '' : 's'} copied${includeHeaders ? ' with headers' : ''}`
     )
   }
 
@@ -199,7 +205,7 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
 
   const handleCopyShortcut = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== 'c') return
-    if (activeView === 'messages') return
+    if (typeof displayedView !== 'number') return
     if (selectedCellsInOrder.length > 0) {
       event.preventDefault()
       copyCells()
@@ -213,14 +219,21 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
     <Box onKeyDown={handleCopyShortcut} sx={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: 'var(--latch-shell)' }}>
       <Stack direction="row" sx={{ minHeight: 40, alignItems: 'center', px: 1.25, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Tabs
-          value={activeView}
+          value={displayedView}
           onChange={(_event, value: ResultView) => setActiveView(value)}
+          variant="scrollable"
+          scrollButtons="auto"
           sx={{ minHeight: 40, alignSelf: 'stretch', '& .MuiTabs-indicator': { height: 2 }, '& .MuiTab-root': { minWidth: 0, minHeight: 40, px: 1, py: 0, fontSize: 12, textTransform: 'none' } }}
         >
-          <Tab
-            value="results"
-            label={<Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}><span>Results</span>{result && result.columns.length > 0 && <Chip label={result.rowCount} size="small" sx={{ height: 19, fontSize: 10 }} />}</Stack>}
-          />
+          {resultSets.length === 0 ? (
+            <Tab value="empty" label="Results" />
+          ) : resultSets.map((resultSet, index) => (
+            <Tab
+              key={index}
+              value={index}
+              label={<Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}><span>{resultSets.length === 1 ? 'Results' : `Results ${index + 1}`}</span><Chip label={resultSet.rowCount} size="small" sx={{ height: 19, fontSize: 10 }} /></Stack>}
+            />
+          ))}
           <Tab value="messages" label="Messages" />
         </Tabs>
         <Box sx={{ flex: 1 }} />
@@ -229,10 +242,10 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
         <Button
           size="small"
           color="inherit"
-          disabled={activeView === 'results' ? !canCopyResults : !messageSummary.copyText}
+          disabled={typeof displayedView === 'number' ? !canCopyResults : !messageSummary.copyText}
           startIcon={<ContentCopyRounded />}
-          endIcon={activeView === 'results' ? <ArrowDropDownRounded /> : undefined}
-          onClick={activeView === 'results' ? openCopyMenu : copyMessages}
+          endIcon={typeof displayedView === 'number' ? <ArrowDropDownRounded /> : undefined}
+          onClick={typeof displayedView === 'number' ? openCopyMenu : copyMessages}
           sx={{ minWidth: 0, height: 30, px: 0.75, fontSize: 12 }}
         >
           Copy
@@ -260,22 +273,17 @@ export const ResultsPanel = memo(function ResultsPanel({ result, error, onClear 
         <MenuItem onClick={() => copyAllRows(true)}>Copy all rows with headers</MenuItem>
       </Menu>
 
-      {activeView === 'results' ? (
+      {displayedView !== 'messages' ? (
       <Box onClick={clearSelection} sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        {!result && (
+        {displayedView === 'empty' && (
           <Stack sx={{ height: '100%', alignItems: 'center', justifyContent: 'center', gap: 1, color: 'text.disabled' }}>
             <Box sx={{ width: 34, height: 34, display: 'grid', placeItems: 'center', borderRadius: '50%', border: '1px solid', borderColor: 'divider' }}><PlayArrowRounded sx={{ fontSize: 17 }} /></Box>
-            <Typography variant="caption">{error ? 'Query failed — see Messages' : 'Run a query to see results'}</Typography>
+            <Typography variant="caption">{error ? 'Query failed — see Messages' : result ? 'No result set — see Messages' : 'Run a query to see results'}</Typography>
           </Stack>
         )}
-        {result && result.columns.length === 0 && (
-          <Stack sx={{ height: '100%', alignItems: 'center', justifyContent: 'center', color: 'text.disabled' }}>
-            <Typography variant="caption">No result set — see Messages</Typography>
-          </Stack>
-        )}
-        {result && result.columns.length > 0 && (
+        {activeResult && (
           <ResultDataGrid
-            result={result}
+            result={activeResult}
             selectedCells={selectedCells}
             selectedRows={selectedRows}
             onSelectedRowsChange={handleSelectedRowsChange}

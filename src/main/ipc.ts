@@ -161,9 +161,10 @@ export function registerIpc(): void {
     return getProviderSchema(connection, database)
   })
 
-  ipcMain.handle('database:execute', async (_event, connectionId: string, database: string | undefined, query: string) => {
+  ipcMain.handle('database:execute', async (_event, connectionId: string, database: string | undefined, query: string, sessionId: string) => {
     if (!query.trim()) throw new Error('Write a query first.')
+    if (!sessionId) throw new Error('The query session is unavailable.')
     const connection = findConnection(connectionId)
-    return executeProviderQuery(connection, database, query)
+    return executeProviderQuery(connection, database, query, sessionId)
   })
 }

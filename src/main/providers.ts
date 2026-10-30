@@ -10,7 +10,7 @@ interface ProviderAdapter {
   test?: (connection: StoredConnection) => Promise<void>
   listDatabases: (connection: StoredConnection) => Promise<string[]>
   getSchema: (connection: StoredConnection, database?: string) => Promise<DatabaseObject[]>
-  execute: (connection: StoredConnection, database: string | undefined, query: string) => Promise<QueryResult>
+  execute: (connection: StoredConnection, database: string | undefined, query: string, sessionId: string) => Promise<QueryResult>
   closeConnection: (connectionId: string) => Promise<void>
   closeAll: () => Promise<void>
 }
@@ -33,7 +33,7 @@ const adapters = {
     test: (connection) => testPostgres(server(connection, 'postgresql')),
     listDatabases: (connection) => listPostgresDatabases(server(connection, 'postgresql')),
     getSchema: (connection, database) => getPostgresSchema(server(connection, 'postgresql'), requireDatabase(database)),
-    execute: (connection, database, query) => executePostgresQuery(server(connection, 'postgresql'), requireDatabase(database), query),
+    execute: (connection, database, query, sessionId) => executePostgresQuery(server(connection, 'postgresql'), requireDatabase(database), query, sessionId),
     closeConnection: closePostgresConnection,
     closeAll: closeAllPostgresConnections
   },
@@ -42,7 +42,7 @@ const adapters = {
     test: (connection) => testMySql(server(connection, 'mysql')),
     listDatabases: (connection) => listMySqlDatabases(server(connection, 'mysql')),
     getSchema: (connection, database) => getMySqlSchema(server(connection, 'mysql'), requireDatabase(database)),
-    execute: (connection, database, query) => executeMySqlQuery(server(connection, 'mysql'), requireDatabase(database), query),
+    execute: (connection, database, query, sessionId) => executeMySqlQuery(server(connection, 'mysql'), requireDatabase(database), query, sessionId),
     closeConnection: closeMySqlConnection,
     closeAll: closeAllMySqlConnections
   },
@@ -51,7 +51,7 @@ const adapters = {
     test: (connection) => testSqlServer(server(connection, 'sqlserver')),
     listDatabases: (connection) => listSqlServerDatabases(server(connection, 'sqlserver')),
     getSchema: (connection, database) => getSqlServerSchema(server(connection, 'sqlserver'), requireDatabase(database)),
-    execute: (connection, database, query) => executeSqlServerQuery(server(connection, 'sqlserver'), requireDatabase(database), query),
+    execute: (connection, database, query, sessionId) => executeSqlServerQuery(server(connection, 'sqlserver'), requireDatabase(database), query, sessionId),
     closeConnection: closeSqlServerConnection,
     closeAll: closeAllSqlServerConnections
   },
@@ -60,7 +60,7 @@ const adapters = {
     test: (connection) => testSqlServer(server(connection, 'azuresql')),
     listDatabases: (connection) => listSqlServerDatabases(server(connection, 'azuresql')),
     getSchema: (connection, database) => getSqlServerSchema(server(connection, 'azuresql'), requireDatabase(database)),
-    execute: (connection, database, query) => executeSqlServerQuery(server(connection, 'azuresql'), requireDatabase(database), query),
+    execute: (connection, database, query, sessionId) => executeSqlServerQuery(server(connection, 'azuresql'), requireDatabase(database), query, sessionId),
     closeConnection: closeSqlServerConnection,
     closeAll: closeAllSqlServerConnections
   },
@@ -71,9 +71,9 @@ const adapters = {
       if (connection.provider !== 'sqlite') throw new Error('Expected a SQLite connection.')
       return getSqliteSchema(connection)
     },
-    execute: async (connection, _database, query) => {
+    execute: async (connection, _database, query, sessionId) => {
       if (connection.provider !== 'sqlite') throw new Error('Expected a SQLite connection.')
-      return executeSqliteQuery(connection, query)
+      return executeSqliteQuery(connection, query, sessionId)
     },
     closeConnection: closeSqliteConnection,
     closeAll: closeAllSqliteConnections
@@ -106,8 +106,8 @@ export function getProviderSchema(connection: StoredConnection, database?: strin
   return adapterFor(connection).getSchema(connection, database)
 }
 
-export function executeProviderQuery(connection: StoredConnection, database: string | undefined, query: string): Promise<QueryResult> {
-  return adapterFor(connection).execute(connection, database, query)
+export function executeProviderQuery(connection: StoredConnection, database: string | undefined, query: string, sessionId: string): Promise<QueryResult> {
+  return adapterFor(connection).execute(connection, database, query, sessionId)
 }
 
 export function closeProviderConnection(connection: StoredConnection): Promise<void> {

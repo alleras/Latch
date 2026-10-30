@@ -12,7 +12,7 @@ import {
   type Renderers
 } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
-import type { QueryResult } from '../../../shared/types'
+import type { QueryResultSet } from '../../../shared/types'
 import { resultValueText } from './result-copy'
 import type { SelectionModifiers } from './result-selection'
 
@@ -25,10 +25,10 @@ const WIDTH_SAMPLE_SIZE = 24
 const SELECT_COLUMN_KEY = 'latch-select-row'
 const DATA_COLUMN_PREFIX = 'latch-result-column:'
 
-type ResultRow = QueryResult['rows'][number]
+type ResultRow = QueryResultSet['rows'][number]
 
 interface ResultDataGridProps {
-  result: QueryResult
+  result: QueryResultSet
   selectedCells: Set<string>
   selectedRows: Set<number>
   onSelectedRowsChange: (selectedRows: Set<number>) => void
@@ -53,12 +53,12 @@ function estimatedValueLength(value: unknown): number {
   return 20
 }
 
-function initialColumnWidths(result: QueryResult): number[] {
+function initialColumnWidths(result: QueryResultSet): number[] {
   const sampleCount = Math.min(result.rows.length, WIDTH_SAMPLE_SIZE)
-  return result.columns.map((column) => {
+  return result.columns.map((column, columnIndex) => {
     let characterCount = column.length
     for (let rowIndex = 0; rowIndex < sampleCount; rowIndex += 1) {
-      characterCount = Math.max(characterCount, estimatedValueLength(result.rows[rowIndex][column]))
+      characterCount = Math.max(characterCount, estimatedValueLength(result.rows[rowIndex][columnIndex]))
     }
     return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, characterCount * 8 + 28))
   })
@@ -158,11 +158,11 @@ export const ResultDataGrid = memo(function ResultDataGrid({
       resizable: true,
       cellClass: (row) => {
         const classes = ['latch-result-data-cell']
-        if (row[columnName] === null) classes.push('latch-result-null-cell')
+        if (row[columnIndex] === null) classes.push('latch-result-null-cell')
         return classes.join(' ')
       },
       renderCell: ({ row }) => {
-        const text = resultValueText(row[columnName])
+        const text = resultValueText(row[columnIndex])
         return <span className="latch-result-cell-value" title={text}>{text}</span>
       }
     }))

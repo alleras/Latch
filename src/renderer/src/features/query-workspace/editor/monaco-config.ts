@@ -3,7 +3,9 @@ import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import 'monaco-editor/esm/vs/basic-languages/mysql/mysql.contribution'
 import 'monaco-editor/esm/vs/basic-languages/pgsql/pgsql.contribution'
 import 'monaco-editor/esm/vs/basic-languages/sql/sql.contribution'
-import type { DatabaseObject, ProviderId } from '../../../../../shared/types'
+import type { ProviderId } from '../../../../../shared/types'
+import { createSqlCatalogIndex, sqlCatalogCandidates, type SqlCatalogCandidateKind, type SqlCatalogIndex } from './sql-catalog'
+import { analyzeSqlCompletion } from './sql-completion-context'
 
 const monacoGlobal = self as typeof self & {
   MonacoEnvironment?: { getWorker: (_moduleId: string, _label: string) => Worker }
@@ -96,7 +98,14 @@ export function defineLatchThemes(): void {
   })
 }
 
-export function registerSqlCompletionProviders(getSchema: () => DatabaseObject[]): monaco.IDisposable[] {
+const completionKind: Record<SqlCatalogCandidateKind, monaco.languages.CompletionItemKind> = {
+  relation: monaco.languages.CompletionItemKind.Class,
+  column: monaco.languages.CompletionItemKind.Field,
+  function: monaco.languages.CompletionItemKind.Function,
+  procedure: monaco.languages.CompletionItemKind.Method
+}
+
+export function registerSqlCompletionProviders(getCatalog: () => SqlCatalogIndex): monaco.IDisposable[] {
   return ['sql', 'mysql', 'pgsql'].map((languageId) => (
     monaco.languages.registerCompletionItemProvider(languageId, {
       triggerCharacters: ['.'],
@@ -108,34 +117,19 @@ export function registerSqlCompletionProviders(getSchema: () => DatabaseObject[]
           startColumn: word.startColumn,
           endColumn: word.endColumn
         }
-        const suggestions: monaco.languages.CompletionItem[] = []
-
-        for (const table of getSchema().filter((item) => item.type === 'table' || item.type === 'view')) {
-          const qualifiedName = table.schema ? `${table.schema}.${table.name}` : table.name
-          suggestions.push({
-            label: qualifiedName,
-            kind: monaco.languages.CompletionItemKind.Class,
-            detail: table.type,
-            insertText: qualifiedName,
-            range,
-            sortText: `1_${qualifiedName}`
-          })
-          for (const column of table.columns) {
-            suggestions.push({
-              label: column.name,
-              kind: monaco.languages.CompletionItemKind.Field,
-              detail: `${qualifiedName} · ${column.type}`,
-              insertText: column.name,
-              range,
-              sortText: `2_${column.name}_${qualifiedName}`
-            })
-          }
-        }
-
+        const context = analyzeSqlCompletion(model.getValue(), model.getOffsetAt(position))
+        const suggestions = sqlCatalogCandidates(getCatalog(), context).map((candidate): monaco.languages.CompletionItem => ({
+          label: candidate.label,
+          kind: completionKind[candidate.kind],
+          detail: candidate.detail,
+          insertText: candidate.insertText,
+          range,
+          sortText: candidate.sortText
+        }))
         return { suggestions }
       }
     })
   ))
 }
 
-export { monaco }
+export { createSqlCatalogIndex, monaco }

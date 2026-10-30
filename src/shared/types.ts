@@ -103,14 +103,19 @@ export interface DatabaseObject {
   parentName?: string
 }
 
-export interface QueryResult {
+export interface QueryResultSet {
   columns: string[]
   /** Full database type declarations, aligned with columns by ordinal (including aliases). */
   columnTypes?: (string | null)[]
-  rows: Record<string, unknown>[]
+  /** Positional values preserve duplicate column names and their original order. */
+  rows: unknown[][]
   rowCount: number
+}
+
+export interface QueryResult {
+  resultSets: QueryResultSet[]
   durationMs: number
-  message?: string
+  messages: string[]
 }
 
 export type MenuCommand = 'new-query' | 'open-file' | 'save' | 'save-as'
@@ -149,7 +154,7 @@ export interface LatchApi {
   removeConnection: (id: string) => Promise<Connection[]>
   listDatabases: (connectionId: string) => Promise<string[]>
   getSchema: (connectionId: string, database?: string) => Promise<DatabaseObject[]>
-  executeQuery: (connectionId: string, database: string | undefined, sql: string) => Promise<QueryResult>
+  executeQuery: (connectionId: string, database: string | undefined, sql: string, sessionId: string) => Promise<QueryResult>
   writeClipboard: (text: string) => Promise<void>
   onCloseActiveTab: (callback: () => void) => () => void
   /** Shows the open dialog and reads the chosen files. Empty when cancelled. */
