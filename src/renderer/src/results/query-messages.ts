@@ -26,9 +26,12 @@ export function queryMessageSummary(result: QueryResult | null, error: string | 
     }
   }
 
-  const rowSummary = result.message
-    ?? `${result.rowCount} row${result.rowCount === 1 ? '' : 's'} returned`
-  const lines = [rowSummary, `Completed in ${result.durationMs.toFixed(1)} ms`]
+  const returned = result.resultSets.map((resultSet, index) => {
+    const prefix = result.resultSets.length > 1 ? `Results ${index + 1}: ` : ''
+    return `${prefix}${resultSet.rowCount} row${resultSet.rowCount === 1 ? '' : 's'} returned`
+  })
+  const lines = [...returned, ...result.messages, `Completed in ${result.durationMs.toFixed(1)} ms`]
+  if (lines.length === 1) lines.unshift('Command completed successfully')
   return {
     kind: 'success',
     title: 'Query completed',

@@ -1,8 +1,9 @@
 import { safeStorage } from 'electron'
 import { Pool } from 'pg'
+import type { QueryArrayResult } from 'pg'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
 import type { StoredServerConnection } from '../types'
-import { pushGrouped, relationKey, serializeRows } from './common'
+import { pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
 
 type PostgresConnection = StoredServerConnection & { provider: 'postgresql' }
@@ -240,27 +241,42 @@ export async function getPostgresSchema(connection: PostgresConnection, database
 export async function executePostgresQuery(connection: PostgresConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
-    const result = await pool.query<Record<string, unknown>>(query)
+    const response = await pool.query({ text: query, rowMode: 'array' }) as unknown as QueryArrayResult<unknown[]> | QueryArrayResult<unknown[]>[]
     const durationMs = performance.now() - startedAt
-    const rows = serializeRows(result.rows)
-    const columns = result.fields.map((field: { name: string }) => field.name)
+    const results = Array.isArray(response) ? response : [response]
+    const fields = results.flatMap((result) => result.fields)
     // Resolve all result types in one round trip, including casts and expressions.
     // Metadata enrichment must never turn an already executed write into a query failure.
-    const columnTypes = result.fields.length === 0 ? [] : await pool.query<{ type: string }>(`
+    const columnTypes = fields.length === 0 ? [] : await pool.query<{ type: string }>(`
       SELECT pg_catalog.format_type(field.type_oid, field.modifier) AS type
       FROM unnest($1::oid[], $2::int[]) WITH ORDINALITY AS field(type_oid, modifier, position)
       ORDER BY field.position
-    `, [result.fields.map((field) => field.dataTypeID), result.fields.map((field) => field.dataTypeModifier)])
+    `, [fields.map((field) => field.dataTypeID), fields.map((field) => field.dataTypeModifier)])
       .then((metadata) => metadata.rows.map((row) => row.type))
-      .catch(() => result.fields.map(() => null))
-    const affected = result.rowCount ?? 0
+      .catch(() => fields.map(() => null))
+    let typeOffset = 0
+    const resultSets = results.flatMap((result) => {
+      const types = columnTypes.slice(typeOffset, typeOffset + result.fields.length)
+      typeOffset += result.fields.length
+      if (result.fields.length === 0) return []
+      return [{
+        columns: result.fields.map((field) => field.name),
+        columnTypes: types,
+        rows: serializeRows(result.rows),
+        rowCount: result.rows.length
+      }]
+    })
+    const messages = results.flatMap((result) => {
+      if (result.fields.length > 0) return []
+      const affected = result.rowCount ?? 0
+      return affected === 0 && ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(result.command)
+        ? [`${result.command} completed`]
+        : [rowsAffectedMessage(affected)]
+    })
     return {
-      columns,
-      columnTypes,
-      rows,
-      rowCount: columns.length ? rows.length : affected,
+      resultSets,
       durationMs,
-      message: columns.length ? undefined : `${affected} row${affected === 1 ? '' : 's'} affected`
+      messages
     }
   }, sessionId)
 }

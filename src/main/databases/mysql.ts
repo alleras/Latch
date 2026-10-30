@@ -1,8 +1,8 @@
 import { safeStorage } from 'electron'
-import mysql, { type FieldPacket, type Pool } from 'mysql2/promise'
+import mysql, { type FieldPacket, type Pool, type ResultSetHeader } from 'mysql2/promise'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
 import type { StoredServerConnection } from '../types'
-import { pushGrouped, relationKey, serializeRows } from './common'
+import { pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
 import { mysqlResultType, mysqlTypeDeclaration } from './column-types'
 
@@ -23,7 +23,8 @@ function createPool(connection: MySqlConnection, database?: string, connectionLi
     connectionLimit,
     maxIdle: 2,
     idleTimeout: 5 * 60 * 1000,
-    enableKeepAlive: true
+    enableKeepAlive: true,
+    multipleStatements: true
   })
 }
 
@@ -234,22 +235,41 @@ async function resultColumnTypes(pool: Pool, fields: FieldPacket[]): Promise<(st
   return fields.map((field) => declarations.get(identity(field.db ?? '', field.orgTable, field.orgName)) ?? mysqlResultType(field))
 }
 
+function isMultipleMySqlResult(fields: unknown): fields is Array<FieldPacket[] | undefined> {
+  return Array.isArray(fields) && (fields.length === 0 || fields[0] === undefined || Array.isArray(fields[0]))
+}
+
 export async function executeMySqlQuery(connection: MySqlConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
-    const [result, fields] = await pool.query(query)
+    const [result, fields] = await pool.query({ sql: query, rowsAsArray: true })
     const durationMs = performance.now() - startedAt
-    const isRows = Array.isArray(result)
-    const rows = isRows ? serializeRows(result as Record<string, unknown>[]) : []
-    const columns = fields?.map((field: FieldPacket) => field.name) ?? []
-    const affected = isRows ? rows.length : Number((result as { affectedRows?: number }).affectedRows ?? 0)
+    const multiple = isMultipleMySqlResult(fields)
+    const rawResults = multiple ? result as unknown[] : [result]
+    const fieldSets = multiple ? fields : [fields as FieldPacket[] | undefined]
+    const resultSets: QueryResult['resultSets'] = []
+    const messages: string[] = []
+
+    for (let index = 0; index < rawResults.length; index += 1) {
+      const rawResult = rawResults[index]
+      const resultFields = fieldSets[index]
+      if (Array.isArray(resultFields)) {
+        const rows = serializeRows(rawResult as unknown[][])
+        resultSets.push({
+          columns: resultFields.map((field) => field.name),
+          columnTypes: await resultColumnTypes(pool, resultFields),
+          rows,
+          rowCount: rows.length
+        })
+      } else {
+        const affected = Number((rawResult as ResultSetHeader | undefined)?.affectedRows ?? 0)
+        messages.push(affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully')
+      }
+    }
     return {
-      columns,
-      columnTypes: await resultColumnTypes(pool, fields ?? []),
-      rows,
-      rowCount: affected,
+      resultSets,
       durationMs,
-      message: columns.length ? undefined : `${affected} row${affected === 1 ? '' : 's'} affected`
+      messages
     }
   }, sessionId)
 }

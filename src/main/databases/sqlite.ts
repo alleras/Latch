@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
 import type { DatabaseObject, QueryResult, SchemaColumn, SchemaConstraint, SchemaIndex, SqliteConnection } from '../../shared/types'
-import { serializeRows } from './common'
+import { rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
+import { isTransactionControlStatement, splitSqlStatements } from './sql-statements'
 
 const sessions = new DatabaseSessionCache<DatabaseSync>((database) => database.close())
 
@@ -197,23 +198,35 @@ export function executeSqliteQuery(connection: SqliteConnection, query: string, 
   const sessionKey = JSON.stringify([connection.path, sessionId])
   return sessions.run(connection.id, sessionKey, () => new DatabaseSync(connection.path), (database) => {
     const startedAt = performance.now()
-    const statement = database.prepare(query)
-    const metadata = statement.columns()
-    const columns = metadata.map((column) => column.name)
-    const columnTypes = metadata.map((column) => column.type)
-    if (columns.length > 0) {
-      const rows = serializeRows(statement.all() as Record<string, unknown>[])
-      return { columns, columnTypes, rows, rowCount: rows.length, durationMs: performance.now() - startedAt }
-    }
+    const resultSets: QueryResult['resultSets'] = []
+    const messages: string[] = []
+    for (const sql of splitSqlStatements(query)) {
+      const statement = database.prepare(sql)
+      const metadata = statement.columns()
+      if (metadata.length > 0) {
+        const supportsArrays = typeof statement.setReturnArrays === 'function'
+        if (supportsArrays) statement.setReturnArrays(true)
+        const rawRows = statement.all()
+        const rows = serializeRows(supportsArrays
+          ? rawRows as unknown as unknown[][]
+          : (rawRows as Record<string, unknown>[]).map((row) => metadata.map((column) => row[column.name])))
+        resultSets.push({
+          columns: metadata.map((column) => column.name),
+          columnTypes: metadata.map((column) => column.type),
+          rows,
+          rowCount: rows.length
+        })
+        continue
+      }
 
-    const result = statement.run()
-    const changes = Number(result.changes)
+      const result = statement.run()
+      const changes = Number(result.changes)
+      messages.push(changes > 0 && !isTransactionControlStatement(sql) ? rowsAffectedMessage(changes) : 'Command completed successfully')
+    }
     return {
-      columns: [],
-      rows: [],
-      rowCount: changes,
+      resultSets,
       durationMs: performance.now() - startedAt,
-      message: `${changes} row${changes === 1 ? '' : 's'} affected`
+      messages
     }
   })
 }

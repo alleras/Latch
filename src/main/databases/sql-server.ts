@@ -2,7 +2,7 @@ import { safeStorage } from 'electron'
 import sql from 'mssql'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
 import type { StoredServerConnection } from '../types'
-import { pushGrouped, relationKey, serializeRows } from './common'
+import { pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
 import { sqlServerResultType, sqlServerTypeDeclaration } from './column-types'
 
@@ -276,21 +276,44 @@ export async function getSqlServerSchema(connection: SqlServerConnection, databa
   })
 }
 
+interface SqlServerArrayColumn {
+  name: string
+  type: unknown
+  length: number
+  precision?: number
+  scale?: number
+}
+
+interface SqlServerArrayResult {
+  recordsets?: unknown[][][]
+  columns?: SqlServerArrayColumn[][]
+  rowsAffected?: number[]
+}
+
 export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
-    const response = await pool.request().query(query)
+    const request = pool.request()
+    request.multiple = true
+    request.arrayRowMode = true
+    const response = await request.query(query) as unknown as SqlServerArrayResult
     const durationMs = performance.now() - startedAt
-    const rows = serializeRows((response.recordset ?? []) as Record<string, unknown>[])
-    const columns = response.recordset ? Object.keys(response.recordset.columns) : []
-    const affected = response.rowsAffected.reduce((total, count) => total + count, 0)
+    const affected = (response.rowsAffected ?? []).reduce((total, count) => total + count, 0)
+    const resultSets = (response.recordsets ?? []).map((rows, index) => {
+      const columns = response.columns?.[index] ?? []
+      return {
+        columns: columns.map((column) => column.name),
+        columnTypes: columns.map(sqlServerResultType),
+        rows: serializeRows(rows),
+        rowCount: rows.length
+      }
+    })
     return {
-      columns,
-      columnTypes: columns.map((name) => sqlServerResultType(response.recordset.columns[name])),
-      rows,
-      rowCount: rows.length || affected,
+      resultSets,
       durationMs,
-      message: columns.length ? undefined : `${affected} row${affected === 1 ? '' : 's'} affected`
+      messages: resultSets.length > 0
+        ? []
+        : [affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully']
     }
   }, sessionId)
 }

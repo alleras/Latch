@@ -21,17 +21,17 @@ function tsvValue(value: unknown): string {
 
 export function rowsToTsv(
   columns: string[],
-  rows: Record<string, unknown>[],
+  rows: unknown[][],
   includeHeaders: boolean
 ): string {
-  const lines = rows.map((row) => columns.map((column) => tsvValue(row[column])).join('\t'))
+  const lines = rows.map((row) => columns.map((_column, columnIndex) => tsvValue(row[columnIndex])).join('\t'))
   if (includeHeaders) lines.unshift(columns.map(tsvValue).join('\t'))
   return lines.join('\n')
 }
 
 export function cellsToTsv(
   columns: string[],
-  rows: Record<string, unknown>[],
+  rows: unknown[][],
   cells: CellPosition[],
   includeHeaders: boolean
 ): string {
@@ -42,7 +42,7 @@ export function cellsToTsv(
   const columnIndexes = [...new Set(cells.map((cell) => cell.columnIndex))].sort((left, right) => left - right)
   const lines = rowIndexes.map((rowIndex) => columnIndexes.map((columnIndex) => (
     selected.has(cellSelectionKey({ rowIndex, columnIndex }))
-      ? tsvValue(rows[rowIndex]?.[columns[columnIndex]])
+      ? tsvValue(rows[rowIndex]?.[columnIndex])
       : ''
   )).join('\t'))
 

@@ -4,10 +4,12 @@ export function serializeValue(value: unknown): unknown {
   return value
 }
 
-export function serializeRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
-  return rows.map((row) => Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key, serializeValue(value)])
-  ))
+export function serializeRows(rows: unknown[][]): unknown[][] {
+  return rows.map((row) => row.map(serializeValue))
+}
+
+export function rowsAffectedMessage(count: number): string {
+  return `${count} row${count === 1 ? '' : 's'} affected`
 }
 
 export function pushGrouped<K, V>(groups: Map<K, V[]>, key: K, value: V): void {
