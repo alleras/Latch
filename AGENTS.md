@@ -4,6 +4,10 @@
 
 - Do not use Qodo tools, CLI commands, or skills for this project. Use local code inspection and checks for reviews.
 
+## Release rules
+
+- Every version release must have a tailored, user-facing changelog rather than leaving GitHub's generated pull-request list as the final release notes. Summarize the meaningful changes since the previous tag under concise sections such as Highlights, Improvements, and Fixes; omit empty sections and internal-only details. If automation creates generated notes, replace them with the tailored changelog and verify the published release body.
+
 ## Performance rules
 
 - Treat database metadata and query results as unbounded collections. Do not design collection UI around small development fixtures.
