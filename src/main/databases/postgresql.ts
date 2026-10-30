@@ -9,7 +9,7 @@ type PostgresConnection = StoredServerConnection & { provider: 'postgresql' }
 
 const sessions = new DatabaseSessionCache<Pool>((pool) => pool.end())
 
-function createPool(connection: PostgresConnection, database?: string): Pool {
+function createPool(connection: PostgresConnection, database?: string, max = 5): Pool {
   const pool = new Pool({
     host: connection.host,
     port: connection.port,
@@ -18,16 +18,17 @@ function createPool(connection: PostgresConnection, database?: string): Pool {
     database: database ?? connection.initialDatabase ?? 'postgres',
     connectionTimeoutMillis: 12_000,
     ssl: connection.ssl ? { rejectUnauthorized: !connection.trustServerCertificate } : false,
-    max: 5,
+    max,
     idleTimeoutMillis: 5 * 60 * 1000
   })
   pool.on('error', (error) => console.error(`PostgreSQL pool error for ${connection.name}.`, error))
   return pool
 }
 
-function withPool<T>(connection: PostgresConnection, database: string | undefined, task: (pool: Pool) => Promise<T>): Promise<T> {
+function withPool<T>(connection: PostgresConnection, database: string | undefined, task: (pool: Pool) => Promise<T>, sessionId?: string): Promise<T> {
   const selectedDatabase = database ?? connection.initialDatabase ?? 'postgres'
-  return sessions.run(connection.id, selectedDatabase, () => createPool(connection, database), task)
+  const sessionKey = sessionId ? JSON.stringify([selectedDatabase, sessionId]) : selectedDatabase
+  return sessions.run(connection.id, sessionKey, () => createPool(connection, database, sessionId ? 1 : 5), task)
 }
 
 export async function testPostgres(connection: PostgresConnection): Promise<void> {
@@ -236,7 +237,7 @@ export async function getPostgresSchema(connection: PostgresConnection, database
   })
 }
 
-export async function executePostgresQuery(connection: PostgresConnection, database: string, query: string): Promise<QueryResult> {
+export async function executePostgresQuery(connection: PostgresConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
     const result = await pool.query<Record<string, unknown>>(query)
@@ -261,7 +262,7 @@ export async function executePostgresQuery(connection: PostgresConnection, datab
       durationMs,
       message: columns.length ? undefined : `${affected} row${affected === 1 ? '' : 's'} affected`
     }
-  })
+  }, sessionId)
 }
 
 export function closePostgresConnection(connectionId: string): Promise<void> {

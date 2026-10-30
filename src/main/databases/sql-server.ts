@@ -10,7 +10,7 @@ type SqlServerConnection = StoredServerConnection & { provider: 'sqlserver' | 'a
 
 const sessions = new DatabaseSessionCache<sql.ConnectionPool>((pool) => pool.close())
 
-function config(connection: SqlServerConnection, database = 'master'): sql.config {
+function config(connection: SqlServerConnection, database = 'master', max = 5): sql.config {
   return {
     server: connection.host,
     port: connection.port,
@@ -20,7 +20,7 @@ function config(connection: SqlServerConnection, database = 'master'): sql.confi
     connectionTimeout: 12_000,
     requestTimeout: 30_000,
     pool: {
-      max: 5,
+      max,
       min: 0,
       idleTimeoutMillis: 5 * 60 * 1000
     },
@@ -32,17 +32,18 @@ function config(connection: SqlServerConnection, database = 'master'): sql.confi
   }
 }
 
-function createPool(connection: SqlServerConnection, database: string): Promise<sql.ConnectionPool> {
-  const pool = new sql.ConnectionPool(config(connection, database))
+function createPool(connection: SqlServerConnection, database: string, max = 5): Promise<sql.ConnectionPool> {
+  const pool = new sql.ConnectionPool(config(connection, database, max))
   pool.on('error', (error) => console.error(`SQL Server pool error for ${connection.name}/${database}.`, error))
   return pool.connect()
 }
 
-function withPool<T>(connection: SqlServerConnection, database: string, task: (pool: sql.ConnectionPool) => Promise<T>): Promise<T> {
+function withPool<T>(connection: SqlServerConnection, database: string, task: (pool: sql.ConnectionPool) => Promise<T>, sessionId?: string): Promise<T> {
+  const sessionKey = sessionId ? JSON.stringify([database, sessionId]) : database
   return sessions.run(
     connection.id,
-    database,
-    () => createPool(connection, database),
+    sessionKey,
+    () => createPool(connection, database, sessionId ? 1 : 5),
     task
   )
 }
@@ -275,7 +276,7 @@ export async function getSqlServerSchema(connection: SqlServerConnection, databa
   })
 }
 
-export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string): Promise<QueryResult> {
+export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
     const response = await pool.request().query(query)
@@ -291,7 +292,7 @@ export async function executeSqlServerQuery(connection: SqlServerConnection, dat
       durationMs,
       message: columns.length ? undefined : `${affected} row${affected === 1 ? '' : 's'} affected`
     }
-  })
+  }, sessionId)
 }
 
 export function closeSqlServerConnection(connectionId: string): Promise<void> {

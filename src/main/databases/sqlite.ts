@@ -193,8 +193,9 @@ export function getSqliteSchema(connection: SqliteConnection): Promise<DatabaseO
   })
 }
 
-export function executeSqliteQuery(connection: SqliteConnection, query: string): Promise<QueryResult> {
-  return sessions.run(connection.id, connection.path, () => new DatabaseSync(connection.path), (database) => {
+export function executeSqliteQuery(connection: SqliteConnection, query: string, sessionId: string): Promise<QueryResult> {
+  const sessionKey = JSON.stringify([connection.path, sessionId])
+  return sessions.run(connection.id, sessionKey, () => new DatabaseSync(connection.path), (database) => {
     const startedAt = performance.now()
     const statement = database.prepare(query)
     const metadata = statement.columns()

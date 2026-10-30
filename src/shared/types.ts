@@ -149,7 +149,7 @@ export interface LatchApi {
   removeConnection: (id: string) => Promise<Connection[]>
   listDatabases: (connectionId: string) => Promise<string[]>
   getSchema: (connectionId: string, database?: string) => Promise<DatabaseObject[]>
-  executeQuery: (connectionId: string, database: string | undefined, sql: string) => Promise<QueryResult>
+  executeQuery: (connectionId: string, database: string | undefined, sql: string, sessionId: string) => Promise<QueryResult>
   writeClipboard: (text: string) => Promise<void>
   onCloseActiveTab: (callback: () => void) => () => void
   /** Shows the open dialog and reads the chosen files. Empty when cancelled. */

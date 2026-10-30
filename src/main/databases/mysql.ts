@@ -10,7 +10,7 @@ type MySqlConnection = StoredServerConnection & { provider: 'mysql' }
 
 const sessions = new DatabaseSessionCache<Pool>((pool) => pool.end())
 
-function createPool(connection: MySqlConnection, database?: string): Pool {
+function createPool(connection: MySqlConnection, database?: string, connectionLimit = 5): Pool {
   return mysql.createPool({
     host: connection.host,
     port: connection.port,
@@ -20,16 +20,17 @@ function createPool(connection: MySqlConnection, database?: string): Pool {
     connectTimeout: 12_000,
     ssl: connection.ssl ? { rejectUnauthorized: !connection.trustServerCertificate } : undefined,
     waitForConnections: true,
-    connectionLimit: 5,
+    connectionLimit,
     maxIdle: 2,
     idleTimeout: 5 * 60 * 1000,
     enableKeepAlive: true
   })
 }
 
-function withPool<T>(connection: MySqlConnection, database: string | undefined, task: (pool: Pool) => Promise<T>): Promise<T> {
+function withPool<T>(connection: MySqlConnection, database: string | undefined, task: (pool: Pool) => Promise<T>, sessionId?: string): Promise<T> {
   const selectedDatabase = database ?? connection.initialDatabase ?? ''
-  return sessions.run(connection.id, selectedDatabase, () => createPool(connection, database), task)
+  const sessionKey = sessionId ? JSON.stringify([selectedDatabase, sessionId]) : selectedDatabase
+  return sessions.run(connection.id, sessionKey, () => createPool(connection, database, sessionId ? 1 : 5), task)
 }
 
 export async function testMySql(connection: MySqlConnection): Promise<void> {
@@ -233,7 +234,7 @@ async function resultColumnTypes(pool: Pool, fields: FieldPacket[]): Promise<(st
   return fields.map((field) => declarations.get(identity(field.db ?? '', field.orgTable, field.orgName)) ?? mysqlResultType(field))
 }
 
-export async function executeMySqlQuery(connection: MySqlConnection, database: string, query: string): Promise<QueryResult> {
+export async function executeMySqlQuery(connection: MySqlConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
     const [result, fields] = await pool.query(query)
@@ -250,7 +251,7 @@ export async function executeMySqlQuery(connection: MySqlConnection, database: s
       durationMs,
       message: columns.length ? undefined : `${affected} row${affected === 1 ? '' : 's'} affected`
     }
-  })
+  }, sessionId)
 }
 
 export function closeMySqlConnection(connectionId: string): Promise<void> {
