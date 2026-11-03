@@ -2,16 +2,18 @@ import { safeStorage } from 'electron'
 import { Pool } from 'pg'
 import type { QueryArrayResult } from 'pg'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
-import type { StoredServerConnection } from '../types'
-import { pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
+import type { BoundedQueryOptions, StoredServerConnection } from '../types'
+import { limitRows, pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
 
 type PostgresConnection = StoredServerConnection & { provider: 'postgresql' }
 
 const sessions = new DatabaseSessionCache<Pool>((pool) => pool.end())
 
-function createPool(connection: PostgresConnection, database?: string, max = 5): Pool {
+function createPool(connection: PostgresConnection, database?: string, max = 5, queryTimeoutMs?: number): Pool {
   const pool = new Pool({
+    // The server-side statement_timeout cancels the query; this client-side limit also covers a stalled network.
+    ...(queryTimeoutMs ? { query_timeout: queryTimeoutMs + 5_000 } : {}),
     host: connection.host,
     port: connection.port,
     user: connection.username,
@@ -89,7 +91,7 @@ export async function getPostgresSchema(connection: PostgresConnection, database
             ELSE 'exclusion'
           END AS type,
           ARRAY(
-            SELECT attribute.attname
+            SELECT attribute.attname::text
             FROM unnest(constraint_row.conkey) WITH ORDINALITY AS key_column(attnum, position)
             JOIN pg_attribute attribute ON attribute.attrelid = constraint_row.conrelid AND attribute.attnum = key_column.attnum
             ORDER BY key_column.position
@@ -97,7 +99,7 @@ export async function getPostgresSchema(connection: PostgresConnection, database
           referenced_ns.nspname AS referenced_schema,
           referenced_relation.relname AS referenced_table,
           ARRAY(
-            SELECT attribute.attname
+            SELECT attribute.attname::text
             FROM unnest(constraint_row.confkey) WITH ORDINALITY AS key_column(attnum, position)
             JOIN pg_attribute attribute ON attribute.attrelid = constraint_row.confrelid AND attribute.attnum = key_column.attnum
             ORDER BY key_column.position
@@ -238,47 +240,79 @@ export async function getPostgresSchema(connection: PostgresConnection, database
   })
 }
 
+type PostgresResponse = QueryArrayResult<unknown[]> | QueryArrayResult<unknown[]>[]
+type TypeLookup = (text: string, values: unknown[]) => Promise<{ rows: Array<{ type: string }> }>
+
+async function toQueryResult(response: PostgresResponse, durationMs: number, lookupTypes: TypeLookup, maxRows?: number): Promise<QueryResult> {
+  const results = Array.isArray(response) ? response : [response]
+  const fields = results.flatMap((result) => result.fields)
+  // Resolve all result types in one round trip, including casts and expressions.
+  // Metadata enrichment must never turn an already executed write into a query failure.
+  const columnTypes = fields.length === 0 ? [] : await lookupTypes(`
+    SELECT pg_catalog.format_type(field.type_oid, field.modifier) AS type
+    FROM unnest($1::oid[], $2::int[]) WITH ORDINALITY AS field(type_oid, modifier, position)
+    ORDER BY field.position
+  `, [fields.map((field) => field.dataTypeID), fields.map((field) => field.dataTypeModifier)])
+    .then((metadata) => metadata.rows.map((row) => row.type))
+    .catch(() => fields.map(() => null))
+  let typeOffset = 0
+  const resultSets = results.flatMap((result) => {
+    const types = columnTypes.slice(typeOffset, typeOffset + result.fields.length)
+    typeOffset += result.fields.length
+    if (result.fields.length === 0) return []
+    const { rows, truncated } = limitRows(result.rows, maxRows)
+    return [{
+      columns: result.fields.map((field) => field.name),
+      columnTypes: types,
+      rows: serializeRows(rows),
+      rowCount: rows.length,
+      ...(truncated ? { truncated } : {})
+    }]
+  })
+  const messages = results.flatMap((result) => {
+    if (result.fields.length > 0) return []
+    const affected = result.rowCount ?? 0
+    return affected === 0 && ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(result.command)
+      ? [`${result.command} completed`]
+      : [rowsAffectedMessage(affected)]
+  })
+  return { resultSets, durationMs, messages }
+}
+
 export async function executePostgresQuery(connection: PostgresConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
-    const response = await pool.query({ text: query, rowMode: 'array' }) as unknown as QueryArrayResult<unknown[]> | QueryArrayResult<unknown[]>[]
+    const response = await pool.query({ text: query, rowMode: 'array' }) as unknown as PostgresResponse
     const durationMs = performance.now() - startedAt
-    const results = Array.isArray(response) ? response : [response]
-    const fields = results.flatMap((result) => result.fields)
-    // Resolve all result types in one round trip, including casts and expressions.
-    // Metadata enrichment must never turn an already executed write into a query failure.
-    const columnTypes = fields.length === 0 ? [] : await pool.query<{ type: string }>(`
-      SELECT pg_catalog.format_type(field.type_oid, field.modifier) AS type
-      FROM unnest($1::oid[], $2::int[]) WITH ORDINALITY AS field(type_oid, modifier, position)
-      ORDER BY field.position
-    `, [fields.map((field) => field.dataTypeID), fields.map((field) => field.dataTypeModifier)])
-      .then((metadata) => metadata.rows.map((row) => row.type))
-      .catch(() => fields.map(() => null))
-    let typeOffset = 0
-    const resultSets = results.flatMap((result) => {
-      const types = columnTypes.slice(typeOffset, typeOffset + result.fields.length)
-      typeOffset += result.fields.length
-      if (result.fields.length === 0) return []
-      return [{
-        columns: result.fields.map((field) => field.name),
-        columnTypes: types,
-        rows: serializeRows(result.rows),
-        rowCount: result.rows.length
-      }]
-    })
-    const messages = results.flatMap((result) => {
-      if (result.fields.length > 0) return []
-      const affected = result.rowCount ?? 0
-      return affected === 0 && ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(result.command)
-        ? [`${result.command} completed`]
-        : [rowsAffectedMessage(affected)]
-    })
-    return {
-      resultSets,
-      durationMs,
-      messages
-    }
+    return toQueryResult(response, durationMs, (text, values) => pool.query<{ type: string }>(text, values))
   }, sessionId)
+}
+
+/**
+ * Runs one command line query on a dedicated connection that is closed afterwards. Read-only queries
+ * run inside a READ ONLY transaction that is always rolled back, with read-only as the session default.
+ */
+export async function executePostgresBoundedQuery(connection: PostgresConnection, database: string, query: string, options: BoundedQueryOptions): Promise<QueryResult> {
+  const pool = createPool(connection, database, 1, options.timeoutMs)
+  try {
+    const client = await pool.connect()
+    try {
+      await client.query(`SET statement_timeout = ${Math.max(1, Math.floor(options.timeoutMs))}`)
+      if (options.readOnly) {
+        await client.query('SET default_transaction_read_only = on')
+        await client.query('BEGIN TRANSACTION READ ONLY')
+      }
+      const startedAt = performance.now()
+      const response = await client.query({ text: query, rowMode: 'array' }) as unknown as PostgresResponse
+      const durationMs = performance.now() - startedAt
+      return await toQueryResult(response, durationMs, (text, values) => client.query<{ type: string }>(text, values), options.maxRows)
+    } finally {
+      if (options.readOnly) await client.query('ROLLBACK').catch(() => undefined)
+      client.release()
+    }
+  } finally {
+    await pool.end().catch(() => undefined)
+  }
 }
 
 export function closePostgresConnection(connectionId: string): Promise<void> {

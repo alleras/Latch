@@ -1,8 +1,8 @@
 import { app, safeStorage } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type { Connection, ServerConnectionInput } from '../shared/types'
+import { CLI_ACCESS_LEVELS, type CliAccess, type Connection, type ServerConnectionInput } from '../shared/types'
 import type { StoredConnection, StoredServerConnection } from './types'
 
 function storePath(): string {
@@ -19,7 +19,10 @@ export function loadStoredConnections(): StoredConnection[] {
 }
 
 function save(connections: StoredConnection[]): void {
-  writeFileSync(storePath(), JSON.stringify(connections, null, 2))
+  // The `latch` command reads this file from another process; replace it whole so a reader never sees a partial write.
+  const temporaryPath = `${storePath()}.${process.pid}.tmp`
+  writeFileSync(temporaryPath, JSON.stringify(connections, null, 2))
+  renameSync(temporaryPath, storePath())
 }
 
 export function toPublicConnection(connection: StoredConnection): Connection {
@@ -68,6 +71,20 @@ export function removeConnection(id: string): Connection[] {
   const connections = loadStoredConnections().filter((connection) => connection.id !== id)
   save(connections)
   return connections.map(toPublicConnection)
+}
+
+export function setConnectionCliAccess(id: string, access: CliAccess): Connection[] {
+  if (!CLI_ACCESS_LEVELS.includes(access)) throw new Error('Unknown command line access level.')
+  const connections = loadStoredConnections()
+  if (!connections.some((connection) => connection.id === id)) throw new Error('That connection no longer exists.')
+  const updated = connections.map((connection) => {
+    if (connection.id !== id) return connection
+    if (access !== 'off') return { ...connection, cliAccess: access }
+    const { cliAccess: _, ...rest } = connection
+    return rest as StoredConnection
+  })
+  save(updated)
+  return updated.map(toPublicConnection)
 }
 
 export function findConnection(id: string): StoredConnection {

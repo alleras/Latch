@@ -11,10 +11,20 @@ export interface ProviderDefinition {
   defaultSsl: boolean
 }
 
+/**
+ * What the `latch` command line may do with a connection. Absent means `off`: connections are
+ * invisible to the command line until the user opts them in. `read-write` still runs queries
+ * read-only unless the caller passes `--write`.
+ */
+export type CliAccess = 'off' | 'read-only' | 'read-write'
+
+export const CLI_ACCESS_LEVELS: readonly CliAccess[] = ['off', 'read-only', 'read-write']
+
 interface ConnectionBase {
   id: string
   name: string
   provider: ProviderId
+  cliAccess?: CliAccess
 }
 
 export interface SqliteConnection extends ConnectionBase {
@@ -110,6 +120,8 @@ export interface QueryResultSet {
   /** Positional values preserve duplicate column names and their original order. */
   rows: unknown[][]
   rowCount: number
+  /** True when the row limit stopped the result early; `rows` holds only the rows kept. */
+  truncated?: boolean
 }
 
 export interface QueryResult {
@@ -119,6 +131,16 @@ export interface QueryResult {
 }
 
 export type MenuCommand = 'new-query' | 'open-file' | 'save' | 'save-as'
+
+export interface CliInstallStatus {
+  /** Where the `latch` command is (or would be) installed. */
+  path: string
+  installed: boolean
+  /** True when an installed command points at a different Latch executable, e.g. after moving the app. */
+  outdated: boolean
+  /** True when the install directory is on the PATH Latch can see. Shells may differ. */
+  onPath: boolean
+}
 
 export interface ApplicationMenuItem {
   id: number
@@ -152,6 +174,9 @@ export interface LatchApi {
   createDatabase: () => Promise<Connection | null>
   addServerConnection: (input: ServerConnectionInput) => Promise<Connection>
   removeConnection: (id: string) => Promise<Connection[]>
+  setCliAccess: (id: string, access: CliAccess) => Promise<Connection[]>
+  getCliInstallStatus: () => Promise<CliInstallStatus>
+  installCli: () => Promise<CliInstallStatus>
   listDatabases: (connectionId: string) => Promise<string[]>
   getSchema: (connectionId: string, database?: string) => Promise<DatabaseObject[]>
   executeQuery: (connectionId: string, database: string | undefined, sql: string, sessionId: string) => Promise<QueryResult>

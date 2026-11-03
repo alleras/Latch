@@ -34,7 +34,8 @@ function App({ settings, onSettingsChange }: AppProps) {
     ready: connectionsReady,
     openSqlite,
     addServer,
-    remove: removeManagedConnection
+    remove: removeManagedConnection,
+    setCliAccess
   } = useConnectionManager()
   const {
     databasesByConnection,
@@ -279,8 +280,10 @@ function App({ settings, onSettingsChange }: AppProps) {
       <SettingsDialog
         open={settingsDialogOpen}
         settings={settings}
+        connections={connections}
         onClose={() => setSettingsDialogOpen(false)}
         onSave={onSettingsChange}
+        onSaveCliAccess={setCliAccess}
       />
       <UnsavedChangesDialog
         open={Boolean(closePrompt)}

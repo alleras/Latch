@@ -19,7 +19,7 @@
     "package:linux": "npm run build && electron-builder --linux --publish never",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
-    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.ts\""
+    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/support/resolve-typescript.mjs --test \"tests/**/*.test.ts\""
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

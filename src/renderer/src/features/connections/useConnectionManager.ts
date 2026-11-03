@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Connection, ProviderDefinition, ServerConnectionInput } from '../../../../shared/types'
+import type { CliAccess, Connection, ProviderDefinition, ServerConnectionInput } from '../../../../shared/types'
 
 interface ConnectionState {
   providers: ProviderDefinition[]
@@ -44,5 +44,11 @@ export function useConnectionManager() {
     return connections
   }, [])
 
-  return { ...state, openSqlite, addServer, remove }
+  const setCliAccess = useCallback(async (changes: ReadonlyMap<string, CliAccess>): Promise<void> => {
+    let connections: Connection[] | null = null
+    for (const [connectionId, access] of changes) connections = await window.latch.setCliAccess(connectionId, access)
+    if (connections) setState((current) => ({ ...current, connections: connections! }))
+  }, [])
+
+  return { ...state, openSqlite, addServer, remove, setCliAccess }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import BrightnessAutoRounded from '@mui/icons-material/BrightnessAutoRounded'
 import DarkModeRounded from '@mui/icons-material/DarkModeRounded'
 import LightModeRounded from '@mui/icons-material/LightModeRounded'
@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Dialog,
+  Divider,
   DialogActions,
   DialogContent,
   DialogTitle,
@@ -14,13 +15,19 @@ import {
   ToggleButtonGroup,
   Typography
 } from '@mui/material'
+import type { CliAccess, Connection } from '../../../shared/types'
 import type { AppSettings, ThemePreference } from '../settings'
+import { readableErrorMessage } from '../errors'
+import { CommandLineSettings } from './CommandLineSettings'
 
 interface SettingsDialogProps {
   open: boolean
   settings: AppSettings
+  connections: Connection[]
   onClose: () => void
   onSave: (settings: AppSettings) => void
+  /** Persists changed command line access levels, keyed by connection id. */
+  onSaveCliAccess: (changes: ReadonlyMap<string, CliAccess>) => Promise<void>
 }
 
 const themeOptions: Array<{
@@ -34,16 +41,42 @@ const themeOptions: Array<{
   { value: 'system', label: 'System', description: 'Follow your operating system', icon: BrightnessAutoRounded }
 ]
 
-export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDialogProps) {
+export function SettingsDialog({ open, settings, connections, onClose, onSave, onSaveCliAccess }: SettingsDialogProps) {
   const [theme, setTheme] = useState<ThemePreference>(settings.theme)
+  const [cliAccess, setCliAccess] = useState<ReadonlyMap<string, CliAccess>>(new Map())
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) setTheme(settings.theme)
   }, [open, settings.theme])
 
-  const save = (): void => {
-    onSave({ ...settings, theme })
-    onClose()
+  useEffect(() => {
+    if (!open) return
+    setCliAccess(new Map())
+    setSaveError(null)
+  }, [open])
+
+  const changeCliAccess = useCallback((connectionId: string, access: CliAccess): void => {
+    setCliAccess((current) => new Map(current).set(connectionId, access))
+  }, [])
+
+  const save = async (): Promise<void> => {
+    const changed = new Map([...cliAccess].filter(([id, access]) => {
+      const connection = connections.find((candidate) => candidate.id === id)
+      return connection && (connection.cliAccess ?? 'off') !== access
+    }))
+    setSaving(true)
+    setSaveError(null)
+    try {
+      if (changed.size > 0) await onSaveCliAccess(changed)
+      onSave({ ...settings, theme })
+      onClose()
+    } catch (error) {
+      setSaveError(readableErrorMessage(error))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -80,11 +113,14 @@ export function SettingsDialog({ open, settings, onClose, onSave }: SettingsDial
               )
             })}
           </ToggleButtonGroup>
+          <Divider sx={{ my: 1 }} />
+          <CommandLineSettings open={open} connections={connections} access={cliAccess} onAccessChange={changeCliAccess} />
         </Stack>
       </DialogContent>
       <DialogActions>
+        {saveError && <Typography variant="caption" color="error" sx={{ mr: 'auto', pl: 1 }}>{saveError}</Typography>}
         <Button color="inherit" onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={save}>Save settings</Button>
+        <Button variant="contained" disabled={saving} onClick={() => { void save() }}>Save settings</Button>
       </DialogActions>
     </Dialog>
   )
