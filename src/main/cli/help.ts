@@ -1,4 +1,4 @@
-import { COMMANDS, EXIT_CODES, GLOBAL_OPTIONS, type CommandSpec, type OptionSpec } from './spec'
+import { COMMANDS, EXIT_CODES, GLOBAL_OPTIONS, QUERY_LIMITS, type CommandSpec, type OptionSpec } from './spec'
 
 function optionLabel(option: OptionSpec): string {
   const long = `--${option.name}${option.value ? ` <${option.value}>` : ''}`
@@ -41,11 +41,15 @@ export function generalHelp(version: string): string {
     '',
     'Access:',
     '  Connections are hidden until enabled in Latch > Settings > Command line, as Read-only',
-    '  or Read & write. Queries are read-only unless you pass --write to a Read & write connection.',
+    '  or Read & write. Queries are read-only unless you pass --write to a Read & write connection;',
+    '  query output includes "readOnly" so you can confirm how it ran.',
+    `  Each result set keeps at most ${QUERY_LIMITS.maxRows.default} rows (--max-rows) and queries stop after ${QUERY_LIMITS.timeoutSeconds.default}s (--timeout).`,
+    '  Prefer LIMIT/TOP in the SQL itself.',
     '',
     'Output:',
     '  JSON by default when output is piped (what scripts and agents see); a table in a terminal.',
-    '  Errors go to stderr. Exit codes: ' + [
+    '  Errors and hints (such as truncation and paging notes) go to stderr, so stdout stays valid JSON.',
+    '  Exit codes: ' + [
       `${EXIT_CODES.ok} success`,
       `${EXIT_CODES.error} database or runtime error`,
       `${EXIT_CODES.usage} usage error`,

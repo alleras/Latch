@@ -96,12 +96,14 @@ export const COMMANDS: CommandSpec[] = [
     ],
     details: [
       'Results are sorted by schema, then name. The output reports the total number of matches, so',
-      'use --filter, --schema, or --offset when a database has more objects than the limit.'
+      'use --filter, --schema, or --offset when a database has more objects than the limit.',
+      'To count objects, read "total" (for example with --type table --limit 1).'
     ],
     examples: [
       'latch objects prod --db sales --type table',
       'latch objects prod --db sales --filter invoice',
-      'latch objects prod --db sales --schema dbo --limit 50 --offset 50'
+      'latch objects prod --db sales --schema dbo --limit 50 --offset 50',
+      'latch objects prod --db sales --type table --limit 1   # "total" is the table count'
     ]
   },
   {

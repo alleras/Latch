@@ -304,6 +304,24 @@ function render(output: CommandOutput, format: OutputFormat): string {
   return [...blocks, ...(output.footer && output.footer.length > 0 ? [output.footer.join('\n')] : [])].filter(Boolean).join('\n\n')
 }
 
+/**
+ * Azure SQL reports a database that does not exist as a failed login, and other servers use their
+ * own wording; when the caller chose a database, say which one so the next step is obvious.
+ */
+function databaseHint(message: string, argv: string[]): string {
+  if (!/login failed|cannot open database|unknown database|database .* does not exist/i.test(message)) return ''
+  try {
+    const invocation = parseArguments(argv)
+    if (invocation.kind !== 'command') return ''
+    const database = stringOption(invocation.options, 'db')
+    const connection = invocation.positionals[0]
+    if (!database || !connection) return ''
+    return `\nlatch: Check that database "${database}" exists and this login can use it: latch databases "${connection}"`
+  } catch {
+    return ''
+  }
+}
+
 const withNewline = (text: string): string => text === '' || text.endsWith('\n') ? text : `${text}\n`
 
 export async function runProgram(argv: string[], services: CliServices, environment: CliEnvironment): Promise<CliResult> {
@@ -331,6 +349,7 @@ export async function runProgram(argv: string[], services: CliServices, environm
       return { stdout: '', stderr: `latch: ${error.message}\nRun "latch help${topic ? ` ${topic}` : ''}" for usage.\n`, exitCode: EXIT_CODES.usage }
     }
     if (error instanceof AccessDeniedError) return { stdout: '', stderr: `latch: ${error.message}\n`, exitCode: EXIT_CODES.denied }
-    return { stdout: '', stderr: `latch: ${errorMessage(error)}\n`, exitCode: EXIT_CODES.error }
+    const message = errorMessage(error)
+    return { stdout: '', stderr: `latch: ${message}${databaseHint(message, argv)}\n`, exitCode: EXIT_CODES.error }
   }
 }

@@ -222,3 +222,12 @@ test('JSON keeps rows on one line and stays valid', async () => {
   assert.match(result.stdout, /"columns": \["id", "note"\]/)
   assert.equal(JSON.parse(result.stdout).resultSets[0].rows.length, 2)
 })
+
+test('a failed login for a chosen database points at the database list', async () => {
+  const { services } = fakeServices({ executeBounded: async () => { throw new Error("Login failed for user 'app'.") } })
+  const result = await run(['query', 'Prod', '--db', 'missing', 'SELECT 1'], services)
+  assert.equal(result.exitCode, 1)
+  assert.match(result.stderr, /Check that database "missing" exists.*latch databases "Prod"/)
+  const withoutDb = await run(['query', 'Prod', 'SELECT 1'], services)
+  assert.doesNotMatch(withoutDb.stderr, /Check that database/)
+})
