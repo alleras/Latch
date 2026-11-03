@@ -1,7 +1,8 @@
-import { DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import type { DatabaseObject, QueryResult, SchemaColumn, SchemaConstraint, SchemaIndex, SqliteConnection } from '../../shared/types'
 import { rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
+import { openSqliteDatabase } from './sqlite-open'
 import { isTransactionControlStatement, splitSqlStatements } from './sql-statements'
 
 const sessions = new DatabaseSessionCache<DatabaseSync>((database) => database.close())
@@ -76,7 +77,7 @@ function sqliteCheckConstraints(definition: string | null): SchemaConstraint[] {
 }
 
 export function getSqliteSchema(connection: SqliteConnection): Promise<DatabaseObject[]> {
-  return sessions.run(connection.id, connection.path, () => new DatabaseSync(connection.path), (database) => {
+  return sessions.run(connection.id, connection.path, () => openSqliteDatabase(connection.path), (database) => {
     const entries = database.prepare(`
       SELECT name, type, tbl_name AS parentName, sql AS definition FROM sqlite_schema
       WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite_%'
@@ -196,7 +197,7 @@ export function getSqliteSchema(connection: SqliteConnection): Promise<DatabaseO
 
 export function executeSqliteQuery(connection: SqliteConnection, query: string, sessionId: string): Promise<QueryResult> {
   const sessionKey = JSON.stringify([connection.path, sessionId])
-  return sessions.run(connection.id, sessionKey, () => new DatabaseSync(connection.path), (database) => {
+  return sessions.run(connection.id, sessionKey, () => openSqliteDatabase(connection.path), (database) => {
     const startedAt = performance.now()
     const resultSets: QueryResult['resultSets'] = []
     const messages: string[] = []

@@ -1,9 +1,11 @@
 import type { DatabaseObject, ProviderDefinition, ProviderId, QueryResult, ServerProviderId } from '../shared/types'
-import { closeAllMySqlConnections, closeMySqlConnection, executeMySqlQuery, getMySqlSchema, listMySqlDatabases, testMySql } from './databases/mysql'
-import { closeAllPostgresConnections, closePostgresConnection, executePostgresQuery, getPostgresSchema, listPostgresDatabases, testPostgres } from './databases/postgresql'
-import { closeAllSqlServerConnections, closeSqlServerConnection, executeSqlServerQuery, getSqlServerSchema, listSqlServerDatabases, testSqlServer } from './databases/sql-server'
+import { closeAllMySqlConnections, closeMySqlConnection, executeMySqlBoundedQuery, executeMySqlQuery, getMySqlSchema, listMySqlDatabases, testMySql } from './databases/mysql'
+import { closeAllPostgresConnections, closePostgresConnection, executePostgresBoundedQuery, executePostgresQuery, getPostgresSchema, listPostgresDatabases, testPostgres } from './databases/postgresql'
+import type { SqlDialect } from './databases/read-only-sql'
+import { closeAllSqlServerConnections, closeSqlServerConnection, executeSqlServerBoundedQuery, executeSqlServerQuery, getSqlServerSchema, listSqlServerDatabases, testSqlServer } from './databases/sql-server'
 import { closeAllSqliteConnections, closeSqliteConnection, executeSqliteQuery, getSqliteSchema } from './databases/sqlite'
-import type { StoredConnection, StoredServerConnection } from './types'
+import { executeSqliteBoundedQuery } from './databases/sqlite-command'
+import type { BoundedQueryOptions, StoredConnection, StoredServerConnection } from './types'
 
 interface ProviderAdapter {
   definition: ProviderDefinition
@@ -11,6 +13,9 @@ interface ProviderAdapter {
   listDatabases: (connection: StoredConnection) => Promise<string[]>
   getSchema: (connection: StoredConnection, database?: string) => Promise<DatabaseObject[]>
   execute: (connection: StoredConnection, database: string | undefined, query: string, sessionId: string) => Promise<QueryResult>
+  /** One-off query on a dedicated connection with read-only, timeout, and row limits (the `latch` command line). */
+  executeBounded: (connection: StoredConnection, database: string | undefined, query: string, options: BoundedQueryOptions) => Promise<QueryResult>
+  dialect: SqlDialect
   closeConnection: (connectionId: string) => Promise<void>
   closeAll: () => Promise<void>
 }
@@ -34,6 +39,8 @@ const adapters = {
     listDatabases: (connection) => listPostgresDatabases(server(connection, 'postgresql')),
     getSchema: (connection, database) => getPostgresSchema(server(connection, 'postgresql'), requireDatabase(database)),
     execute: (connection, database, query, sessionId) => executePostgresQuery(server(connection, 'postgresql'), requireDatabase(database), query, sessionId),
+    executeBounded: (connection, database, query, options) => executePostgresBoundedQuery(server(connection, 'postgresql'), requireDatabase(database), query, options),
+    dialect: 'postgresql',
     closeConnection: closePostgresConnection,
     closeAll: closeAllPostgresConnections
   },
@@ -43,6 +50,8 @@ const adapters = {
     listDatabases: (connection) => listMySqlDatabases(server(connection, 'mysql')),
     getSchema: (connection, database) => getMySqlSchema(server(connection, 'mysql'), requireDatabase(database)),
     execute: (connection, database, query, sessionId) => executeMySqlQuery(server(connection, 'mysql'), requireDatabase(database), query, sessionId),
+    executeBounded: (connection, database, query, options) => executeMySqlBoundedQuery(server(connection, 'mysql'), requireDatabase(database), query, options),
+    dialect: 'mysql',
     closeConnection: closeMySqlConnection,
     closeAll: closeAllMySqlConnections
   },
@@ -52,6 +61,8 @@ const adapters = {
     listDatabases: (connection) => listSqlServerDatabases(server(connection, 'sqlserver')),
     getSchema: (connection, database) => getSqlServerSchema(server(connection, 'sqlserver'), requireDatabase(database)),
     execute: (connection, database, query, sessionId) => executeSqlServerQuery(server(connection, 'sqlserver'), requireDatabase(database), query, sessionId),
+    executeBounded: (connection, database, query, options) => executeSqlServerBoundedQuery(server(connection, 'sqlserver'), requireDatabase(database), query, options),
+    dialect: 'sqlserver',
     closeConnection: closeSqlServerConnection,
     closeAll: closeAllSqlServerConnections
   },
@@ -61,6 +72,8 @@ const adapters = {
     listDatabases: (connection) => listSqlServerDatabases(server(connection, 'azuresql')),
     getSchema: (connection, database) => getSqlServerSchema(server(connection, 'azuresql'), requireDatabase(database)),
     execute: (connection, database, query, sessionId) => executeSqlServerQuery(server(connection, 'azuresql'), requireDatabase(database), query, sessionId),
+    executeBounded: (connection, database, query, options) => executeSqlServerBoundedQuery(server(connection, 'azuresql'), requireDatabase(database), query, options),
+    dialect: 'sqlserver',
     closeConnection: closeSqlServerConnection,
     closeAll: closeAllSqlServerConnections
   },
@@ -75,6 +88,11 @@ const adapters = {
       if (connection.provider !== 'sqlite') throw new Error('Expected a SQLite connection.')
       return executeSqliteQuery(connection, query, sessionId)
     },
+    executeBounded: async (connection, _database, query, options) => {
+      if (connection.provider !== 'sqlite') throw new Error('Expected a SQLite connection.')
+      return executeSqliteBoundedQuery(connection, query, options)
+    },
+    dialect: 'sqlite',
     closeConnection: closeSqliteConnection,
     closeAll: closeAllSqliteConnections
   }
@@ -108,6 +126,18 @@ export function getProviderSchema(connection: StoredConnection, database?: strin
 
 export function executeProviderQuery(connection: StoredConnection, database: string | undefined, query: string, sessionId: string): Promise<QueryResult> {
   return adapterFor(connection).execute(connection, database, query, sessionId)
+}
+
+export function executeProviderBoundedQuery(connection: StoredConnection, database: string | undefined, query: string, options: BoundedQueryOptions): Promise<QueryResult> {
+  return adapterFor(connection).executeBounded(connection, database, query, options)
+}
+
+export function providerDialect(connection: StoredConnection): SqlDialect {
+  return adapterFor(connection).dialect
+}
+
+export function providerDefinition(connection: StoredConnection): ProviderDefinition {
+  return adapterFor(connection).definition
 }
 
 export function closeProviderConnection(connection: StoredConnection): Promise<void> {

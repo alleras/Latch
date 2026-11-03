@@ -8,6 +8,11 @@ export function serializeRows(rows: unknown[][]): unknown[][] {
   return rows.map((row) => row.map(serializeValue))
 }
 
+export function limitRows<T>(rows: T[], maxRows?: number): { rows: T[]; truncated: boolean } {
+  if (maxRows === undefined || rows.length <= maxRows) return { rows, truncated: false }
+  return { rows: rows.slice(0, maxRows), truncated: true }
+}
+
 export function rowsAffectedMessage(count: number): string {
   return `${count} row${count === 1 ? '' : 's'} affected`
 }

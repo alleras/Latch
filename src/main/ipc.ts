@@ -1,7 +1,6 @@
 import { app, clipboard, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
-import type { ServerConnectionInput } from '../shared/types'
+import type { CliAccess, ServerConnectionInput } from '../shared/types'
 import {
   addSqliteConnection,
   buildServerConnection,
@@ -9,6 +8,7 @@ import {
   listConnections,
   persistConnection,
   removeConnection,
+  setConnectionCliAccess,
   toPublicConnection
 } from './connections'
 import {
@@ -19,6 +19,8 @@ import {
   writeDraftBackup,
   writeDraftBackupSync
 } from './draft-backups'
+import { installCli, cliInstallStatus } from './cli/install'
+import { openSqliteDatabase } from './databases/sqlite-open'
 import { createFileAccess } from './file-access'
 import { closeProviderConnection, executeProviderQuery, getProviderSchema, listProviderDatabases, providers, testProviderConnection } from './providers'
 import { isSqlFileEncoding, readSqlFile, writeSqlFile } from './sql-files'
@@ -130,7 +132,7 @@ export function registerIpc(): void {
       filters: [{ name: 'SQLite database', extensions: ['db'] }]
     })
     if (result.canceled || !result.filePath) return null
-    new DatabaseSync(result.filePath).close()
+    openSqliteDatabase(result.filePath).close()
     return addSqliteConnection(result.filePath)
   })
 
@@ -150,6 +152,13 @@ export function registerIpc(): void {
     })
     return remainingConnections
   })
+
+  ipcMain.handle('connections:set-cli-access', (_event, id: unknown, access: unknown) => (
+    setConnectionCliAccess(requireText(id, 'Connection id must be text.'), requireText(access, 'Access level must be text.') as CliAccess)
+  ))
+
+  ipcMain.handle('cli:install-status', () => cliInstallStatus())
+  ipcMain.handle('cli:install', () => installCli())
 
   ipcMain.handle('database:list', async (_event, connectionId: string) => {
     const connection = findConnection(connectionId)

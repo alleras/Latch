@@ -23,6 +23,7 @@ Feature views should not reach into another feature's state. Cross-feature actio
 
 ## Main process
 
+- `index.ts` chooses between the desktop app (`app.ts`) and the `latch` command line (`cli/`), which runs when the launcher passes `--latch-cli`.
 - `ipc.ts` exposes the application API.
 - `menu.ts` and `menu-template.ts` own the application menu. File items only send commands to the renderer; the query workspace decides what they do.
 - `sql-files.ts` reads and writes `.sql` files, detecting UTF-8 (with or without a BOM), UTF-16 and Windows-1252 and writing the same encoding back. `draft-backups.ts` keeps unsaved-edit backups under the application data directory, lands only the newest write for each tab, and prunes leftovers at launch. `file-access.ts` limits file reads and writes by path to files the user picked in an open or save dialog. All three are pure Node modules covered by unit tests.
@@ -30,6 +31,15 @@ Feature views should not reach into another feature's state. Cross-feature actio
 - `providers.ts` routes provider-independent operations to provider adapters.
 - `databases/*` contains provider implementations.
 - `databases/session-cache.ts` owns reusable database session lifecycles.
+- `databases/read-only-sql.ts` is the dialect-aware statement guard for read-only command line queries. Each provider's `executeBounded` adds database-level read-only enforcement where the database supports it, a timeout, and a row limit, on a dedicated connection that is closed afterwards.
+
+### Command line
+
+The `latch` command is a launcher script (`cli/launcher.ts`, installed by `cli/install.ts`) that starts the Latch executable with `--latch-cli -- <args>`. It must be the Latch executable because `safeStorage` keys belong to the app. `cli/main.ts` runs without a window, gives Chromium a temporary session directory so commands can run alongside the app and each other, and exits with the command's code.
+
+`cli/program.ts` is the command runner. It takes its database access as injected services, so parsing (`cli/arguments.ts`), help (`cli/help.ts`), connection and object lookup (`cli/catalog.ts`), access rules, and output (`cli/output.ts`) are all covered by unit tests without Electron. Commands, options, and help text come from one table in `cli/spec.ts`. A future MCP server should reuse `program.ts`'s services and access rules rather than adding another path to the providers.
+
+Per-connection access (`cliAccess`) is stored with the connection in `connections.ts` and edited in **Settings > Command line**. The connection store is replaced atomically on save because the command line reads it from another process.
 
 ## Performance model
 

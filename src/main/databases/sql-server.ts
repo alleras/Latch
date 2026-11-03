@@ -1,8 +1,8 @@
 import { safeStorage } from 'electron'
 import sql from 'mssql'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
-import type { StoredServerConnection } from '../types'
-import { pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
+import type { BoundedQueryOptions, StoredServerConnection } from '../types'
+import { limitRows, pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
 import { sqlServerResultType, sqlServerTypeDeclaration } from './column-types'
 
@@ -10,7 +10,7 @@ type SqlServerConnection = StoredServerConnection & { provider: 'sqlserver' | 'a
 
 const sessions = new DatabaseSessionCache<sql.ConnectionPool>((pool) => pool.close())
 
-function config(connection: SqlServerConnection, database = 'master', max = 5): sql.config {
+function config(connection: SqlServerConnection, database = 'master', max = 5, requestTimeout = 30_000): sql.config {
   return {
     server: connection.host,
     port: connection.port,
@@ -18,7 +18,7 @@ function config(connection: SqlServerConnection, database = 'master', max = 5): 
     password: safeStorage.decryptString(Buffer.from(connection.encryptedPassword, 'base64')),
     database,
     connectionTimeout: 12_000,
-    requestTimeout: 30_000,
+    requestTimeout,
     pool: {
       max,
       min: 0,
@@ -293,32 +293,56 @@ interface SqlServerArrayResult {
   rowsAffected?: number[]
 }
 
-export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
-  return withPool(connection, database, async (pool) => {
-    const startedAt = performance.now()
-    const request = pool.request()
-    request.multiple = true
-    request.arrayRowMode = true
-    const response = await request.batch(query) as unknown as SqlServerArrayResult
-    const durationMs = performance.now() - startedAt
-    const affected = (response.rowsAffected ?? []).reduce((total, count) => total + count, 0)
-    const resultSets = (response.recordsets ?? []).map((rows) => {
-      const columns = rows.columns ?? []
-      return {
-        columns: columns.map((column) => column.name),
-        columnTypes: columns.map(sqlServerResultType),
-        rows: serializeRows(rows),
-        rowCount: rows.length
-      }
-    })
+async function runBatch(request: sql.Request, query: string, maxRows?: number): Promise<QueryResult> {
+  const startedAt = performance.now()
+  request.multiple = true
+  request.arrayRowMode = true
+  const response = await request.batch(query) as unknown as SqlServerArrayResult
+  const durationMs = performance.now() - startedAt
+  const affected = (response.rowsAffected ?? []).reduce((total, count) => total + count, 0)
+  const resultSets = (response.recordsets ?? []).map((recordset) => {
+    const columns = recordset.columns ?? []
+    const { rows, truncated } = limitRows(recordset, maxRows)
     return {
-      resultSets,
-      durationMs,
-      messages: resultSets.length > 0
-        ? []
-        : [affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully']
+      columns: columns.map((column) => column.name),
+      columnTypes: columns.map(sqlServerResultType),
+      rows: serializeRows(rows),
+      rowCount: rows.length,
+      ...(truncated ? { truncated } : {})
     }
-  }, sessionId)
+  })
+  return {
+    resultSets,
+    durationMs,
+    messages: resultSets.length > 0
+      ? []
+      : [affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully']
+  }
+}
+
+export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
+  return withPool(connection, database, async (pool) => runBatch(pool.request(), query), sessionId)
+}
+
+/**
+ * Runs one command line query on a dedicated connection that is closed afterwards. SQL Server has no
+ * read-only session mode, so read-only queries run in a transaction that is always rolled back; the
+ * statement guard in read-only-sql.ts is what keeps writes and transaction control out of the batch.
+ */
+export async function executeSqlServerBoundedQuery(connection: SqlServerConnection, database: string, query: string, options: BoundedQueryOptions): Promise<QueryResult> {
+  const pool = await new sql.ConnectionPool(config(connection, database, 1, Math.max(1, Math.floor(options.timeoutMs)))).connect()
+  try {
+    if (!options.readOnly) return await runBatch(pool.request(), query, options.maxRows)
+    const transaction = new sql.Transaction(pool)
+    await transaction.begin()
+    try {
+      return await runBatch(new sql.Request(transaction), query, options.maxRows)
+    } finally {
+      await transaction.rollback().catch(() => undefined)
+    }
+  } finally {
+    await pool.close().catch(() => undefined)
+  }
 }
 
 export function closeSqlServerConnection(connectionId: string): Promise<void> {

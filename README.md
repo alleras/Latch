@@ -27,6 +27,26 @@ The project is an early MVP. It prioritizes a fast query workflow, a compact dat
 - Inspect query errors and execution messages
 - Choose light, dark, or system appearance
 - Use a themed Windows title bar and application menu with native window controls and Snap Layouts
+- Query your saved connections from a terminal, scripts, or AI agents with the `latch` command
+
+## Command line
+
+The `latch` command uses the connections saved in Latch without exposing their passwords, so tools like Claude Code and opencode can explore schemas and run queries.
+
+1. In Latch, open **Settings > Command line** and choose **Install**. On macOS and Linux this writes `~/.local/bin/latch`; on Windows it writes `%LOCALAPPDATA%\Latch\bin\latch.cmd`. Add that directory to your `PATH` if Latch says it is missing.
+2. Set each connection you want to use to **Read-only** or **Read & write**. Connections are hidden from the command line until you do.
+3. Run `latch help`.
+
+```sh
+latch connections
+latch objects prod --db sales --filter invoice
+latch describe prod public.invoices --db sales
+latch query prod --db sales "SELECT id, total FROM invoices ORDER BY id DESC LIMIT 20"
+```
+
+Output is JSON when piped and a table in a terminal (`--format json|table|csv` overrides). Queries are read-only unless you pass `--write` to a **Read & write** connection. Read-only queries are checked against a list of read statements, and the database enforces read-only access as well where it can: PostgreSQL and MySQL run them in a read-only transaction and SQLite opens the file read-only. SQL Server has no read-only session mode, so there the statement check and an always-rolled-back transaction are the protection. Every query has a timeout (`--timeout`, default 30 seconds) and a row limit per result set (`--max-rows`, default 200).
+
+Each command starts Latch without a window and exits when it finishes (about a quarter of a second plus the query), so a transaction cannot span commands.
 
 ## Development
 
@@ -112,6 +132,7 @@ Adding a provider means registering its definition and implementing connection t
 - Unsaved edits to open `.sql` files are backed up under the application data directory until saved or discarded, so they survive a relaunch at any file size.
 - The renderer can read and write only files picked in an open or save dialog. The list of those files is kept under the application data directory so restored tabs can reopen them.
 - Credentials are kept out of renderer-facing connection objects.
+- The `latch` command runs as the Latch app, which is what lets it decrypt saved passwords. It only reads the connection store, never prints credentials, and sees only connections enabled for command line access.
 - Local database files and environment files are ignored by Git to reduce the chance of committing sensitive data.
 
 Do not use production credentials while evaluating an untrusted build.

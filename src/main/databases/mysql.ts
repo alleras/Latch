@@ -1,8 +1,8 @@
 import { safeStorage } from 'electron'
-import mysql, { type FieldPacket, type Pool, type ResultSetHeader } from 'mysql2/promise'
+import mysql, { type FieldPacket, type Pool, type PoolConnection, type ResultSetHeader } from 'mysql2/promise'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
-import type { StoredServerConnection } from '../types'
-import { pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
+import type { BoundedQueryOptions, StoredServerConnection } from '../types'
+import { limitRows, pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
 import { DatabaseSessionCache } from './session-cache'
 import { mysqlResultType, mysqlTypeDeclaration } from './column-types'
 
@@ -205,7 +205,9 @@ export async function getMySqlSchema(connection: MySqlConnection, database: stri
   })
 }
 
-async function resultColumnTypes(pool: Pool, fields: FieldPacket[]): Promise<(string | null)[]> {
+type Queryable = Pick<PoolConnection, 'query'>
+
+async function resultColumnTypes(pool: Queryable, fields: FieldPacket[]): Promise<(string | null)[]> {
   const identity = (database: string, table: string, column: string) => JSON.stringify([database, table, column])
   const sources = new Map<string, [string, string, string]>()
   for (const field of fields) {
@@ -239,39 +241,72 @@ function isMultipleMySqlResult(fields: unknown): fields is Array<FieldPacket[] |
   return Array.isArray(fields) && (fields.length === 0 || fields[0] === undefined || Array.isArray(fields[0]))
 }
 
+async function toQueryResult(queryable: Queryable, result: unknown, fields: unknown, durationMs: number, maxRows?: number): Promise<QueryResult> {
+  const multiple = isMultipleMySqlResult(fields)
+  const rawResults = multiple ? result as unknown[] : [result]
+  const fieldSets = multiple ? fields : [fields as FieldPacket[] | undefined]
+  const resultSets: QueryResult['resultSets'] = []
+  const messages: string[] = []
+
+  for (let index = 0; index < rawResults.length; index += 1) {
+    const rawResult = rawResults[index]
+    const resultFields = fieldSets[index]
+    if (Array.isArray(resultFields)) {
+      const { rows, truncated } = limitRows(rawResult as unknown[][], maxRows)
+      resultSets.push({
+        columns: resultFields.map((field) => field.name),
+        columnTypes: await resultColumnTypes(queryable, resultFields),
+        rows: serializeRows(rows),
+        rowCount: rows.length,
+        ...(truncated ? { truncated } : {})
+      })
+    } else {
+      const affected = Number((rawResult as ResultSetHeader | undefined)?.affectedRows ?? 0)
+      messages.push(affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully')
+    }
+  }
+  return { resultSets, durationMs, messages }
+}
+
 export async function executeMySqlQuery(connection: MySqlConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
   return withPool(connection, database, async (pool) => {
     const startedAt = performance.now()
     const [result, fields] = await pool.query({ sql: query, rowsAsArray: true })
     const durationMs = performance.now() - startedAt
-    const multiple = isMultipleMySqlResult(fields)
-    const rawResults = multiple ? result as unknown[] : [result]
-    const fieldSets = multiple ? fields : [fields as FieldPacket[] | undefined]
-    const resultSets: QueryResult['resultSets'] = []
-    const messages: string[] = []
-
-    for (let index = 0; index < rawResults.length; index += 1) {
-      const rawResult = rawResults[index]
-      const resultFields = fieldSets[index]
-      if (Array.isArray(resultFields)) {
-        const rows = serializeRows(rawResult as unknown[][])
-        resultSets.push({
-          columns: resultFields.map((field) => field.name),
-          columnTypes: await resultColumnTypes(pool, resultFields),
-          rows,
-          rowCount: rows.length
-        })
-      } else {
-        const affected = Number((rawResult as ResultSetHeader | undefined)?.affectedRows ?? 0)
-        messages.push(affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully')
-      }
-    }
-    return {
-      resultSets,
-      durationMs,
-      messages
-    }
+    return toQueryResult(pool, result, fields, durationMs)
   }, sessionId)
+}
+
+/**
+ * Runs one command line query on a dedicated connection that is closed afterwards. Read-only queries
+ * run in a READ ONLY transaction that is always rolled back, with read-only as the session default so
+ * a statement that implicitly commits cannot start a writable transaction.
+ */
+export async function executeMySqlBoundedQuery(connection: MySqlConnection, database: string, query: string, options: BoundedQueryOptions): Promise<QueryResult> {
+  const pool = createPool(connection, database, 1)
+  try {
+    const session = await pool.getConnection()
+    try {
+      const timeoutMs = Math.max(1, Math.floor(options.timeoutMs))
+      // MySQL limits SELECT time in milliseconds and MariaDB limits every statement in seconds; each ignores the other's setting.
+      await session.query(`SET SESSION max_execution_time = ${timeoutMs}`).catch(() => undefined)
+      await session.query(`SET SESSION max_statement_time = ${Math.ceil(timeoutMs / 1000)}`).catch(() => undefined)
+      if (options.readOnly) {
+        await session.query('SET SESSION TRANSACTION READ ONLY')
+        await session.query('START TRANSACTION READ ONLY')
+      }
+      const startedAt = performance.now()
+      // The client-side timeout also stops statements the server-side limits do not cover.
+      const [result, fields] = await session.query({ sql: query, rowsAsArray: true, timeout: timeoutMs })
+      const durationMs = performance.now() - startedAt
+      return await toQueryResult(session, result, fields, durationMs, options.maxRows)
+    } finally {
+      if (options.readOnly) await session.query('ROLLBACK').catch(() => undefined)
+      session.release()
+    }
+  } finally {
+    await pool.end().catch(() => undefined)
+  }
 }
 
 export function closeMySqlConnection(connectionId: string): Promise<void> {
