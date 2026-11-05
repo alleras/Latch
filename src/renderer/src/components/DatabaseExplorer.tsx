@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import AccountTreeRounded from '@mui/icons-material/AccountTreeRounded'
 import BoltRounded from '@mui/icons-material/BoltRounded'
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded'
@@ -17,6 +17,8 @@ import {
   IconButton,
   ListItemButton,
   ListItemText,
+  Menu,
+  MenuItem,
   Stack,
   Tooltip,
   Typography
@@ -112,6 +114,13 @@ function matchesIdentity(object: DatabaseObject, needle: string): boolean {
 
 function isRelation(object: DatabaseObject): boolean {
   return object.type === 'table' || object.type === 'view'
+}
+
+/** A one-shot "expand all" / "collapse all" request; `version` changes per request so repeats re-apply. */
+interface ExpansionCommand {
+  expanded: boolean
+  version: number
+  contextKey: string
 }
 
 interface SchemaGroup {
@@ -469,13 +478,20 @@ interface ObjectCategoryProps {
   totalCount: number
   triggersByParent: Map<string, DatabaseObject[]>
   needle: string
+  expansionCommand: ExpansionCommand | null
 }
 
-const ObjectCategory = memo(function ObjectCategory({ category, schemaName, objects, totalCount, triggersByParent, needle }: ObjectCategoryProps) {
-  const defaultExpanded = category === 'table'
+const ObjectCategory = memo(function ObjectCategory({ category, schemaName, objects, totalCount, triggersByParent, needle, expansionCommand }: ObjectCategoryProps) {
+  const defaultExpanded = expansionCommand ? expansionCommand.expanded : category === 'table'
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [hasOpened, setHasOpened] = useState(defaultExpanded)
   const open = Boolean(needle) || expanded
+
+  useEffect(() => {
+    if (!expansionCommand) return
+    setExpanded(expansionCommand.expanded)
+    if (expansionCommand.expanded) setHasOpened(true)
+  }, [expansionCommand])
   const rows = useMemo(() => objects.map((object) => (
     <DatabaseObjectNode
       key={`${object.type}:${object.name}`}
@@ -508,10 +524,15 @@ interface SchemaSectionProps {
   provider: ProviderId
   schema: SchemaGroup
   needle: string
+  expansionCommand: ExpansionCommand | null
 }
 
-const SchemaSection = memo(function SchemaSection({ provider, schema, needle }: SchemaSectionProps) {
-  const [expanded, setExpanded] = useState(true)
+const SchemaSection = memo(function SchemaSection({ provider, schema, needle, expansionCommand }: SchemaSectionProps) {
+  const [expanded, setExpanded] = useState(expansionCommand ? expansionCommand.expanded : true)
+
+  useEffect(() => {
+    if (expansionCommand) setExpanded(expansionCommand.expanded)
+  }, [expansionCommand])
   const schemaMatches = schema.name.toLowerCase().includes(needle)
   const categoryMatches = PROVIDER_CATEGORIES[provider].some((category) => CATEGORY_LABEL[category].toLowerCase().includes(needle))
   const filteredObjects = useMemo(() => schema.objects.filter((object) => {
@@ -551,6 +572,7 @@ const SchemaSection = memo(function SchemaSection({ provider, schema, needle }: 
               totalCount={allCategoryObjects.length}
               triggersByParent={schema.triggersByParent}
               needle={needle}
+              expansionCommand={expansionCommand}
             />
           )
         })}
@@ -570,6 +592,20 @@ export function DatabaseExplorer({
   const filter = usePanelFilter()
   const { needle, setNeedle } = filter
   const contextKey = `${connectionId}:${database ?? 'main'}`
+  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null)
+  const [expansionCommand, setExpansionCommand] = useState<ExpansionCommand | null>(null)
+  // A command issued for another connection/database must never apply to this tree.
+  const activeExpansionCommand = expansionCommand?.contextKey === contextKey ? expansionCommand : null
+
+  const openContextMenu = (event: MouseEvent<HTMLElement>): void => {
+    event.preventDefault()
+    setContextMenu({ mouseX: event.clientX + 2, mouseY: event.clientY - 6 })
+  }
+
+  const applyExpansion = (expanded: boolean): void => {
+    setExpansionCommand((current) => ({ expanded, version: (current?.version ?? 0) + 1, contextKey }))
+    setContextMenu(null)
+  }
 
   const schemas = useMemo(() => {
     const usesSchemas = objects.some((object) => Boolean(object.schema))
@@ -606,7 +642,10 @@ export function DatabaseExplorer({
       })
   }, [objects])
 
-  useEffect(() => setNeedle(''), [contextKey])
+  useEffect(() => {
+    setNeedle('')
+    setExpansionCommand(null)
+  }, [contextKey])
 
   return (
     <Box {...filter.panelProps} aria-label="Database Explorer" sx={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', outline: 'none' }}>
@@ -622,7 +661,7 @@ export function DatabaseExplorer({
         </Tooltip>
       </Stack>
       {filter.open && <PanelFilterField key={contextKey} label="Filter database objects" inputRef={filter.inputRef} onFilterChange={setNeedle} />}
-      <Box sx={{ minHeight: 0, flex: 1, overflow: 'auto', px: 0.75, pb: 0.75 }}>
+      <Box onContextMenu={openContextMenu} sx={{ minHeight: 0, flex: 1, overflow: 'auto', px: 0.75, pb: 0.75 }}>
         <Stack direction="row" sx={{ height: SIDEBAR_SIZE.rowHeight, alignItems: 'center', gap: 0.75, px: 0.5 }}>
           <StorageRounded sx={{ fontSize: SIDEBAR_SIZE.icon, color: 'primary.main' }} />
           <Typography variant="sidebarSection" noWrap sx={{ flex: 1 }}>{database ?? 'main'}</Typography>
@@ -640,12 +679,23 @@ export function DatabaseExplorer({
             provider={provider}
             schema={schema}
             needle={needle}
+            expansionCommand={activeExpansionCommand}
           />
         ))}
         {!loading && objects.length === 0 && (
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', px: 3, py: 0.75 }}>No database objects found</Typography>
         )}
       </Box>
+      <Menu
+        open={Boolean(contextMenu)}
+        onClose={() => setContextMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+        slotProps={{ list: { dense: true }, paper: { sx: { minWidth: 190 } } }}
+      >
+        <MenuItem onClick={() => applyExpansion(true)}>Expand all</MenuItem>
+        <MenuItem onClick={() => applyExpansion(false)}>Collapse all</MenuItem>
+      </Menu>
     </Box>
   )
 }
