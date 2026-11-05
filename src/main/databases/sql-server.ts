@@ -2,9 +2,10 @@ import { safeStorage } from 'electron'
 import sql from 'mssql'
 import type { DatabaseObject, QueryResult, SchemaConstraint, SchemaDefault, SchemaIndex } from '../../shared/types'
 import type { BoundedQueryOptions, StoredServerConnection } from '../types'
-import { limitRows, pushGrouped, relationKey, rowsAffectedMessage, serializeRows } from './common'
+import { pushGrouped, relationKey } from './common'
 import { DatabaseSessionCache } from './session-cache'
-import { sqlServerResultType, sqlServerTypeDeclaration } from './column-types'
+import { sqlServerTypeDeclaration } from './column-types'
+import { runSqlServerBatch } from './sql-server-command'
 
 type SqlServerConnection = StoredServerConnection & { provider: 'sqlserver' | 'azuresql' }
 
@@ -276,52 +277,8 @@ export async function getSqlServerSchema(connection: SqlServerConnection, databa
   })
 }
 
-interface SqlServerArrayColumn {
-  name: string
-  type: unknown
-  length: number
-  precision?: number
-  scale?: number
-}
-
-interface SqlServerArrayRecordset extends Array<unknown[]> {
-  columns?: SqlServerArrayColumn[]
-}
-
-interface SqlServerArrayResult {
-  recordsets?: SqlServerArrayRecordset[]
-  rowsAffected?: number[]
-}
-
-async function runBatch(request: sql.Request, query: string, maxRows?: number): Promise<QueryResult> {
-  const startedAt = performance.now()
-  request.multiple = true
-  request.arrayRowMode = true
-  const response = await request.batch(query) as unknown as SqlServerArrayResult
-  const durationMs = performance.now() - startedAt
-  const affected = (response.rowsAffected ?? []).reduce((total, count) => total + count, 0)
-  const resultSets = (response.recordsets ?? []).map((recordset) => {
-    const columns = recordset.columns ?? []
-    const { rows, truncated } = limitRows(recordset, maxRows)
-    return {
-      columns: columns.map((column) => column.name),
-      columnTypes: columns.map(sqlServerResultType),
-      rows: serializeRows(rows),
-      rowCount: rows.length,
-      ...(truncated ? { truncated } : {})
-    }
-  })
-  return {
-    resultSets,
-    durationMs,
-    messages: resultSets.length > 0
-      ? []
-      : [affected > 0 ? rowsAffectedMessage(affected) : 'Command completed successfully']
-  }
-}
-
 export async function executeSqlServerQuery(connection: SqlServerConnection, database: string, query: string, sessionId: string): Promise<QueryResult> {
-  return withPool(connection, database, async (pool) => runBatch(pool.request(), query), sessionId)
+  return withPool(connection, database, async (pool) => runSqlServerBatch(pool.request(), query), sessionId)
 }
 
 /**
@@ -332,11 +289,11 @@ export async function executeSqlServerQuery(connection: SqlServerConnection, dat
 export async function executeSqlServerBoundedQuery(connection: SqlServerConnection, database: string, query: string, options: BoundedQueryOptions): Promise<QueryResult> {
   const pool = await new sql.ConnectionPool(config(connection, database, 1, Math.max(1, Math.floor(options.timeoutMs)))).connect()
   try {
-    if (!options.readOnly) return await runBatch(pool.request(), query, options.maxRows)
+    if (!options.readOnly) return await runSqlServerBatch(pool.request(), query, options.maxRows)
     const transaction = new sql.Transaction(pool)
     await transaction.begin()
     try {
-      return await runBatch(new sql.Request(transaction), query, options.maxRows)
+      return await runSqlServerBatch(new sql.Request(transaction), query, options.maxRows)
     } finally {
       await transaction.rollback().catch(() => undefined)
     }
